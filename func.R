@@ -563,7 +563,7 @@ landscape_classif <- function(r_pca, p, p_new = NULL,
   n_pca = 3, ci = 0.95, method = "mahalanobis") {
 
   # Extract PCA scores from chosen PCs
-  r_df <- as.data.frame(r_pca$x)[,paste0("PC", 1:n_pca)]
+  r_df <- as.data.frame(r_pca)[,paste0("PC", 1:n_pca)]
   p <- p[,paste0("PC", 1:n_pca)]
 
   if (!is.null(p_new)) { 
@@ -696,7 +696,7 @@ map_classif_vis <- function(r, classif) {
 # @import ggplot2
 # 
 pca_classif_vis <- function(r_pca, classif) {
-  r_df <- cbind(as.data.frame(r_pca$x), classif)
+  r_df <- cbind(as.data.frame(r_pca), classif)
 
   out <- ggplot(r_df, aes(PC1, PC2, colour = group)) +
     geom_point(alpha = 0.8) +

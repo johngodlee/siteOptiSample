@@ -82,14 +82,20 @@ old_dist <- pca_dist(old_pca$r_pca$x, old_pca$p_pca, n_pca = 3, k = 1)
 # Returns vector of distances for each pixel in r_pca
 
 # Create map of the dissimilarity of pixels from existing plots
-map_plot_vis(als_sel, old_dist, p = subplots_fil)
+map_plot_vis_out <- map_plot_vis(als_sel, old_dist, p = subplots_fil)
+
+ggsave(map_plot_vis_out, width = 6, height = 6, 
+  file = "./img/map_plot_vis_out.png")
 
 # Create plot of existing plots within landscape PCA space 
-pca_plot_vis(old_pca$r_pca$x, old_pca$p_pca)
+pca_plot_vis_out <- pca_plot_vis(old_pca$r_pca$x, old_pca$p_pca)
+
+ggsave(pca_plot_vis_out, width = 6, height = 4, 
+  file = "./img/pca_plot_vis_out.png")
 
 # Classify pixels by how well-represented they are by the plots
 old_pca_classif <- landscape_classif(
-  r_pca = old_pca$r_pca, 
+  r_pca = old_pca$r_pca$x, 
   p = old_pca$p_pca, 
   n_pca = 3, 
   ci = 0.95, 
@@ -98,10 +104,16 @@ old_pca_classif <- landscape_classif(
 # Returns dataframe with the distance of each pixel and its classification
 
 # Create map of pixel classification 
-map_classif_vis(als_sel, old_pca_classif)
+map_classif_vis_out <- map_classif_vis(als_sel, old_pca_classif)
+
+ggsave(map_classif_vis_out, width = 6, height = 6, file = 
+  "./img/map_classif_vis_out.png")
 
 # Create PCA biplot of pixel classification 
-pca_classif_vis(old_pca$r_pca, old_pca_classif)
+pca_classif_vis_out <- pca_classif_vis(old_pca$r_pca$x, old_pca_classif)
+
+ggsave(pca_classif_vis_out, width = 6, height = 4, file = 
+  "./img/pca_classif_vis_out.png")
 
 # Extract candidate plot locations (50% sample of pixels in the landscape)
 # XY coordinates of each candidate location
@@ -183,25 +195,34 @@ ggplot() +
 old_cand_dist <- pca_dist(cand_pca$r_pca$x, old_cand_pca_sel, n_pca = 3, k = 1)
 
 # Create map of the dissimilarity of pixels from proposed and existing plots 
-map_plot_vis(
+map_plot_vis_new_out <- map_plot_vis(
   r = als_sel, 
   r_dist = old_cand_dist, 
   p = subplots_fil, 
   p_new = cand[opt_sel,]
 )
 
+ggsave(map_plot_vis_new_out, width = 6, height = 6, 
+  file = "./img/map_plot_vis_new_out.png")
+
 # Create plot of proposed and existing plots within landscape PCA space 
-pca_plot_vis(
+pca_plot_vis_new_out <- pca_plot_vis(
   r_pca = cand_pca$r_pca$x, 
   p_pca = as.data.frame(old_pca$p_pca),
   p_new_pca = as.data.frame(cand_pca_sel))
 
+ggsave(pca_plot_vis_new_out, width = 6, height = 4, 
+  file = "./img/pca_plot_vis_new_out.png")
+
 # Create histograms of pixel-plot dissimilarity with and without proposed plots
-hist_plot_vis(old_dist, old_cand_dist)
+hist_plot_vis_new_out <- hist_plot_vis(old_dist, old_cand_dist)
+
+ggsave(hist_plot_vis_new_out, width = 6, height = 4, 
+  file = "./img/hist_plot_vis_new_out.png")
 
 # Classify pixels by how well-represented they are by the existing and new plots
 cand_classif <- landscape_classif(
-  r_pca = old_pca$r_pca, 
+  r_pca = old_pca$r_pca$x, 
   p = old_pca$p_pca, 
   p_new = cand_pca_sel,
   n_pca = 3, 
@@ -210,8 +231,14 @@ cand_classif <- landscape_classif(
 )
 
 # Create map of pixel classification 
-map_classif_vis(als_sel, cand_classif)
+map_classif_vis_new_out <- map_classif_vis(als_sel, cand_classif)
+
+ggsave(map_classif_vis_new_out, width = 6, height = 6, 
+  file = "./img/map_classif_vis_new_out.png")
 
 # Create PCA biplot of pixel classification 
-pca_classif_vis(old_pca$r_pca, cand_classif)
+pca_classif_vis_new_out <- pca_classif_vis(old_pca$r_pca$x, cand_classif)
+
+ggsave(pca_classif_vis_new_out, width = 6, height = 4, 
+  file = "./img/pca_classif_vis_new_out.png")
 
