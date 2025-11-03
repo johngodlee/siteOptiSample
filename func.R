@@ -419,7 +419,7 @@ map_plot_vis <- function(r, r_dist, p = NULL, p_new = NULL) {
   # Optionally add plots
   if (!is.null(p_all)) { 
     # Define legend items
-    colour_map <- c("Existing plot" = "red", "Proposed plot" = "blue")
+    colour_map <- c("Existing plot" = "#E74B5E", "Proposed plot" = "#5499DE")
     shape_map <- c("Existing plot" = "circle", "Proposed plot" = "circle")
 
     out <- out + geom_point(data = p_all, 
@@ -475,7 +475,7 @@ pca_plot_vis <- function(r_pca, p_pca = NULL, p_new_pca = NULL) {
   # Define legend items 
   size_map <- c("Existing plot" = 3, "Proposed plot" = 3, "Landscape value" = 1)
   opacity_map <- c("Existing plot" = 1, "Proposed plot" = 1, "Landscape value" = 0.5)
-  colour_map <- c("Existing plot" = "red", "Proposed plot" = "blue", "Landscape value" = "grey")
+  colour_map <- c("Existing plot" = "#E74B5E", "Proposed plot" = "#5499DE", "Landscape value" = "grey")
   shape_map <- c("Existing plot" = "circle", "Proposed plot" = "circle", "Landscape value" = "circle")
 
   # Create plot
@@ -526,7 +526,7 @@ hist_plot_vis <- function(dist, dist_new = NULL) {
   out <- ggplot(df, aes(x = distance, fill = scenario)) +
     geom_histogram(alpha = 0.7, position = "identity", bins = 50) +
     scale_fill_manual(name = NULL, 
-      values = c("Existing plots" = "red", "Existing and proposed plots" = "blue")) +
+      values = c("Existing plots" =  "#E74B5E", "Existing and proposed plots" = "#5499DE")) +
     theme_bw() +
     ggtitle("Landscape coverage by plots") +
     labs(

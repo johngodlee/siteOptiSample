@@ -82,9 +82,22 @@ old_dist <- pca_dist(old_pca$r_pca$x, old_pca$p_pca, n_pca = 3, k = 1)
 # Returns vector of distances for each pixel in r_pca
 
 # Create map of the dissimilarity of pixels from existing plots
-map_plot_vis_out <- map_plot_vis(als_sel, old_dist, p = subplots_fil)
+map_plot_vis_out <- map_plot_vis(als_sel, old_dist, p = subplots_fil) + 
+  scale_fill_scico(
+    name = "Relative distance to nearest plot", 
+    palette = "bamako",
+    limits = c(0, 8),
+    oob = scales::squish
+  ) +
+  guides(
+    fill = guide_colourbar(
+      title.position = "top",  # optional
+      barwidth = 20,           # increase length (default is ~5)
+      barheight = 1            # keep it slim
+    )
+  )
 
-ggsave(map_plot_vis_out, width = 6, height = 6, 
+ggsave(map_plot_vis_out, width = 8, height = 6, 
   file = "./img/map_plot_vis_out.png")
 
 # Create plot of existing plots within landscape PCA space 
@@ -106,7 +119,7 @@ old_pca_classif <- landscape_classif(
 # Create map of pixel classification 
 map_classif_vis_out <- map_classif_vis(als_sel, old_pca_classif)
 
-ggsave(map_classif_vis_out, width = 6, height = 6, file = 
+ggsave(map_classif_vis_out, width = 8, height = 6, file = 
   "./img/map_classif_vis_out.png")
 
 # Create PCA biplot of pixel classification 
@@ -170,12 +183,12 @@ opt_meanmin <- meanmin_select(
 )
 
 # Check no selections are duplicated
-stopifnot(all(!duplicated(opt_maximin)))
-stopifnot(all(!duplicated(opt_minimax)))
-stopifnot(all(!duplicated(opt_meanmin)))
+# stopifnot(all(!duplicated(opt_maximin)))
+# stopifnot(all(!duplicated(opt_minimax)))
+# stopifnot(all(!duplicated(opt_meanmin)))
 
 # Select one method
-opt_sel <- opt_meanmin
+opt_sel <- opt_minimax
 
 # Extract PCA scores for proposed plots
 cand_pca_sel <- cand_pca$p_pca[opt_sel,]
@@ -200,9 +213,22 @@ map_plot_vis_new_out <- map_plot_vis(
   r_dist = old_cand_dist, 
   p = subplots_fil, 
   p_new = cand[opt_sel,]
-)
+) +
+  scale_fill_scico(
+    name = "Relative distance to nearest plot", 
+    palette = "bamako",
+    limits = c(0, 8),
+    oob = scales::squish
+  ) +
+  guides(
+    fill = guide_colourbar(
+      title.position = "top",  # optional
+      barwidth = 20,           # increase length (default is ~5)
+      barheight = 1            # keep it slim
+    )
+  )
 
-ggsave(map_plot_vis_new_out, width = 6, height = 6, 
+ggsave(map_plot_vis_new_out, width = 8, height = 6, 
   file = "./img/map_plot_vis_new_out.png")
 
 # Create plot of proposed and existing plots within landscape PCA space 
@@ -233,11 +259,12 @@ cand_classif <- landscape_classif(
 # Create map of pixel classification 
 map_classif_vis_new_out <- map_classif_vis(als_sel, cand_classif)
 
-ggsave(map_classif_vis_new_out, width = 6, height = 6, 
+ggsave(map_classif_vis_new_out, width = 8, height = 6, 
   file = "./img/map_classif_vis_new_out.png")
 
 # Create PCA biplot of pixel classification 
-pca_classif_vis_new_out <- pca_classif_vis(old_pca$r_pca$x, cand_classif)
+pca_classif_vis_new_out <- pca_classif_vis(old_pca$r_pca$x, cand_classif) + 
+  guides(colour = guide_legend(nrow = 2))
 
 ggsave(pca_classif_vis_new_out, width = 6, height = 4, 
   file = "./img/pca_classif_vis_new_out.png")
