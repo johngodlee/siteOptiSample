@@ -53,6 +53,8 @@ als_sel <- als[[c(
   "lad_cv.aboveground.vox",
   "lad_sum.aboveground.vox")]]
 
+# Scale rele
+
 # Check for collinearity
 als_vals <- as.data.frame(als_sel)
 
@@ -111,8 +113,7 @@ old_pca_classif <- landscape_classif(
   r_pca = old_pca$r_pca$x, 
   p = old_pca$p_pca, 
   n_pca = 3, 
-  ci = 0.95, 
-  method = "mahalanobis"
+  ci = 0.95
 )
 # Returns dataframe with the distance of each pixel and its classification
 
@@ -179,7 +180,8 @@ opt_meanmin <- meanmin_select(
   p_new_pca = cand_pca$p_pca,
   p_pca = old_pca$p_pca,
   n_plots = 12, 
-  n_pca = 3
+  n_pca = 3,
+  method = "euclidean"
 )
 
 # Check no selections are duplicated
@@ -188,7 +190,7 @@ opt_meanmin <- meanmin_select(
 # stopifnot(all(!duplicated(opt_meanmin)))
 
 # Select one method
-opt_sel <- opt_minimax
+opt_sel <- opt_meanmin
 
 # Extract PCA scores for proposed plots
 cand_pca_sel <- cand_pca$p_pca[opt_sel,]
@@ -252,8 +254,7 @@ cand_classif <- landscape_classif(
   p = old_pca$p_pca, 
   p_new = cand_pca_sel,
   n_pca = 3, 
-  ci = 0.95, 
-  method = "mahalanobis"
+  ci = 0.95
 )
 
 # Create map of pixel classification 

@@ -141,10 +141,13 @@ pca_dist <- function(x, y, n_pca = 3, k = 1, method = "euclidean") {
 # @param n_plots maximum number of new plots to add
 # @param n_pca number of PCA axes used in analysis
 #
-# @details The maximin algorithm iteratively proposes new plots in pixels with
-#     structural attributes furthest away from the existing (and previously
-#     proposed) plots.
-#
+# @details The maximin algorithm aims to maximise the minimum distance between
+#     proposed plots and existing plots, iteratively placing new plots in
+#     pixels with structural attributes most dissimilar to existing plots. For
+#     each candidate pixel, compute the distance to the nearest existing plot,
+#     then choose the pixel with the highest distance value. As a result, plots
+#     occupy structural extremes.
+
 # @return vector of pixel index values for proposed new plots, ordered by
 #     largest increase in coverage 
 #
@@ -204,7 +207,6 @@ maximin_select <- function(r_pca, p_new_pca, p_pca = NULL, n_plots = 10, n_pca =
   return(sel_idx)
 }
   
-  
 
 # Iteratively add candidate plots using the minimax algorithm
 # 
@@ -216,7 +218,12 @@ maximin_select <- function(r_pca, p_new_pca, p_pca = NULL, n_plots = 10, n_pca =
 #
 # @details
 # The minimax algorithm aims to minimize the maximum distance of any pixel to
-#     its nearest plot in PCA space.
+#     its nearest plot in PCA space, iteratively placing new plots in pixels
+#     with structural attributes most dissimilar to their nearest existing
+#     plot. For each candidate pixel, compute how adding a plot to that pixel
+#     would decrease the maximum pixel-to-nearest-plot distance, then choose
+#     the pixel which most effectively minimises the distance value. As a
+#     result, plots fill gaps in structural space.
 #
 # @return vector of pixel index values for proposed new plots, ordered by
 # largest increase in coverage 
@@ -282,15 +289,20 @@ minimax_select <- function(r_pca, p_new_pca, p_pca = NULL, n_plots = 10, n_pca =
 # @param n_pca number of PCA axes used in analysis
 #
 # @details
-# The meanmin algorithm aims to minimize the average distance of all pixels to
-#     their nearest plot in PCA space, selecting new plots that most reduce the
-#     mean distance iteratively.
+# The meanmin algorithm aims to minimize the mean distance of all pixels to
+#     their nearest plot in PCA space, iteratively placing new plots in pixels
+#     that most reduce the average pixel-to-nearest-plot distance. For each
+#     candidate pixel, compute how adding a plot to that pixel would decrease
+#     the mean pixel-to-nearest-plot distance, then choose the pixel that
+#     yields the largest decrease in mean distance. As a result, plots
+#     concentrate in common areas structural space.
 #
 # @return vector of pixel index values for proposed new plots
 # 
 # @import proxy
 # 
-meanmin_select <- function(r_pca, p_new_pca, p_pca = NULL, n_plots = 10, n_pca = 3) {
+meanmin_select <- function(r_pca, p_new_pca, p_pca = NULL, 
+  n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[,1:n_pca, drop = FALSE])
   p_new_pca <- as.matrix(p_new_pca[,1:n_pca, drop = FALSE])
@@ -300,46 +312,54 @@ meanmin_select <- function(r_pca, p_new_pca, p_pca = NULL, n_plots = 10, n_pca =
   
   # Initialize minimum distances to existing plots
   if (!is.null(p_pca)) {
-    min_dists <- apply(as.matrix(proxy::dist(r_pca, p_pca)), 1, min)
+    d_exist <- as.matrix(proxy::dist(r_pca, p_pca))
+    min_dists <- apply(d_exist, 1, min)
   } else {
     min_dists <- rep(Inf, nrow(r_pca))
   }
-  
-  # Initialize selected indices
+
+  # Prepare candidate index mapping to original input rows
+  cand_idx <- seq_len(nrow(p_new_pca))
   sel_idx <- c()
+
+  # Initialize selected indices
   for (i in seq_len(n_plots)) {
     n_candidates <- nrow(p_new_pca)
     if (n_candidates == 0) {
       warning("No potential candidates for plot ", i)
       break
     }
-    
+
     # Compute mean distance if we added each candidate
-    mean_after <- sapply(seq_len(n_candidates), function(j) {
-      candidate <- matrix(p_new_pca[j,], nrow = nrow(r_pca), ncol = n_pca, byrow = TRUE)
-      new_min <- pmin(min_dists, sqrt(rowSums((r_pca - candidate)^2)))
+    mean_after <- sapply(seq_len(n_candidates), function(rel_j) {
+      cand_vec <- p_new_pca[rel_j, , drop = TRUE]
+      # vectorised Euclidean distance from all pixels to candidate
+      cand_mat <- matrix(cand_vec, nrow = nrow(r_pca), ncol = ncol(r_pca), byrow = TRUE)
+      new_min <- pmin(min_dists, sqrt(rowSums((r_pca - cand_mat)^2)))
       mean(new_min)
     })
-    
-    # Select candidate that minimizes mean distance
-    best_idx <- which.min(mean_after)
-    sel_idx <- c(sel_idx, best_idx)
-    
-    # Update minimum distances
-    candidate <- matrix(p_new_pca[best_idx,], nrow = nrow(r_pca), ncol = n_pca, byrow = TRUE)
-    min_dists <- pmin(min_dists, sqrt(rowSums((r_pca - candidate)^2)))
-    
-    # Remove chosen candidate
-    p_new_pca <- p_new_pca[-best_idx, , drop = FALSE]
 
-    # Stop if no candidates remain
+    # choose best candidate (minimizes mean distance); break ties randomly
+    best_rel <- sample(which(mean_after == min(mean_after)), 1)
+    best_orig_idx <- cand_idx[best_rel]  # original index in input p_new_pca
+    sel_idx <- c(sel_idx, best_orig_idx)
+
+    # Update min_dists using the chosen candidate
+    chosen_vec <- p_new_pca[best_rel, , drop = TRUE]
+    chosen_mat <- matrix(chosen_vec, nrow = nrow(r_pca), ncol = ncol(r_pca), byrow = TRUE)
+    d_chosen <- sqrt(rowSums((r_pca - chosen_mat)^2))
+    min_dists <- pmin(min_dists, d_chosen)
+
+    # Remove chosen candidate from pool (and update cand_idx mapping)
+    p_new_pca <- if (n_candidates > 1) p_new_pca[-best_rel, , drop = FALSE] else matrix(nrow = 0, ncol = n_pca)
+    cand_idx <- cand_idx[-best_rel]
+
     if (nrow(p_new_pca) == 0) {
-      warning("No suitable locations for plot ", i)
+      if (i < n_plots) warning("No suitable locations for plot ", i + 1)
       break
     }
   }
-  
-  # Return
+
   return(sel_idx)
 }
 
@@ -556,11 +576,9 @@ hist_plot_vis <- function(dist, dist_new = NULL) {
 # @param n_pca number of PCA axes used in analysis
 # @param ci quantile threshold for distances, e.g. 0.95 = 95th percentile of
 #     distances among plots 
-# @param method either "mahalanobis" or "euclidean" to specify the distance
-#     method used
 # 
 landscape_classif <- function(r_pca, p, p_new = NULL, 
-  n_pca = 3, ci = 0.95, method = "mahalanobis") {
+  n_pca = 3, ci = 0.95) {
 
   # Extract PCA scores from chosen PCs
   r_df <- as.data.frame(r_pca)[,paste0("PC", 1:n_pca)]
@@ -581,26 +599,13 @@ landscape_classif <- function(r_pca, p, p_new = NULL,
   }
 
   # Compute distances
-  if (method == "mahalanobis") {
-    # Compute Mahalanobis distances for plots and pixels using existing and suggested plots
-    p_dist <- mahalanobis(p, p_cent, p_cov)
-    r_dist <- mahalanobis(r_df, p_cent, p_cov)
+  # Compute Euclidean distances for plots and pixels using existing and suggested plots
+  p_dist <- sqrt(rowSums((p - matrix(p_cent, nrow(p), ncol(p), byrow = TRUE))^2))
+  r_dist <- sqrt(rowSums((r_df - matrix(p_cent, nrow(r_df), ncol(r_df), byrow = TRUE))^2))
 
-    if (!is.null(p_new)) { 
-      p_all_dist <- mahalanobis(p_all, p_all_cent, p_all_cov)
-      r_all_dist <- mahalanobis(r_df, p_all_cent, p_all_cov)
-    }
-  } else if (method == "euclidean") { 
-    # Compute Euclidean distances for plots and pixels using existing and suggested plots
-    p_dist <- sqrt(rowSums((p - matrix(p_cent, nrow(p), ncol(p), byrow = TRUE))^2))
-    r_dist <- sqrt(rowSums((r_df - matrix(p_cent, nrow(r_df), ncol(r_df), byrow = TRUE))^2))
-
-    if (!is.null(p_new)) { 
-      p_all_dist <- sqrt(rowSums((p_all - matrix(p_all_cent, nrow(p_all), ncol(p_all), byrow = TRUE))^2))
-      r_all_dist <- sqrt(rowSums((r_df - matrix(p_all_cent, nrow(r_df), ncol(r_df), byrow = TRUE))^2))
-    }
-  } else {
-    stop("Method must be either 'mahalanobis' or 'euclidean'")
+  if (!is.null(p_new)) { 
+    p_all_dist <- sqrt(rowSums((p_all - matrix(p_all_cent, nrow(p_all), ncol(p_all), byrow = TRUE))^2))
+    r_all_dist <- sqrt(rowSums((r_df - matrix(p_all_cent, nrow(r_df), ncol(r_df), byrow = TRUE))^2))
   }
 
   # Choose cutoff — e.g. 95th percentile of plot distances
