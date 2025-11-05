@@ -10,6 +10,7 @@
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(patchwork)
 library(terra)
 library(sf)
 library(scico)  # Color palettes
@@ -33,7 +34,7 @@ als_poly <- st_as_sf(as.polygons(als, na.rm = TRUE))
 subplots_als <- st_join(subplots, als_poly, join = st_intersects) %>% 
   filter(!is.na(pulse_density)) 
 
-# Only include bottomleft subplots
+# Only include "bottomleft" subplots
 subplots_fil <- subplots_als %>% 
   filter(grepl("bottomleft", subplot_id))
 
@@ -52,8 +53,6 @@ als_sel <- als[[c(
   "zq90.canopy.vox",
   "lad_cv.aboveground.vox",
   "lad_sum.aboveground.vox")]]
-
-# Scale rele
 
 # Check for collinearity
 als_vals <- as.data.frame(als_sel)
@@ -74,33 +73,66 @@ old_ext <- extract_plot_metrics(als_sel, subplots_fil, fun = mean)
 # rather than extracting point estimates from a grid.
 
 # Put pixels and existing plots in the same PCA space
-old_pca <- pca_landscape(als_sel, old_ext)
+old_pca <- pca_landscape(als_sel, old_ext, center = TRUE, scale. = TRUE)
 # Returns two dataframes of PCA scores, for pixels (r_pca) and plots (p_pca)
 # r_pca is a full PCA object
 # p_pca is only PCA scores
+# PCA is run on variables scaled to unit variance shifted to center on zero
 
 # Calculate distance from each pixel to nearest plot in PCA space
-old_dist <- pca_dist(old_pca$r_pca$x, old_pca$p_pca, n_pca = 3, k = 1)
+old_dist_euclidean <- pca_dist(old_pca$r_pca$x, old_pca$p_pca, 
+  n_pca = 3, k = 1, method = "euclidean")
+
+old_dist_mahalanobis <- pca_dist(old_pca$r_pca$x, old_pca$p_pca, 
+  n_pca = 3, k = 1, method = "mahalanobis")
 # Returns vector of distances for each pixel in r_pca
 
-# Create map of the dissimilarity of pixels from existing plots
-map_plot_vis_out <- map_plot_vis(als_sel, old_dist, p = subplots_fil) + 
-  scale_fill_scico(
-    name = "Relative distance to nearest plot", 
-    palette = "bamako",
-    limits = c(0, 8),
-    oob = scales::squish
-  ) +
-  guides(
-    fill = guide_colourbar(
-      title.position = "top",  # optional
-      barwidth = 20,           # increase length (default is ~5)
-      barheight = 1            # keep it slim
-    )
-  )
+old_dist_list <- list(
+  "euclidean" = old_dist_euclidean,
+  "mahalanobis" = old_dist_mahalanobis)
 
-ggsave(map_plot_vis_out, width = 8, height = 6, 
-  file = "./img/map_plot_vis_out.png")
+# Compare Euclidean and Mahalanobis distances
+data.frame(
+  euclidean = c(old_dist_euclidean), 
+  mahalanobis = c(old_dist_mahalanobis)) %>% 
+  ggplot(., aes(x = euclidean, y = mahalanobis)) + 
+  geom_abline(linetype = 2, colour = "red") + 
+  geom_point() + 
+  geom_smooth(colour = "blue") + 
+  geom_smooth(method = "lm", colour = "green") + 
+  theme_classic()
+
+data.frame(
+  euclidean = c(old_dist_euclidean), 
+  mahalanobis = c(old_dist_mahalanobis)) %>% 
+  pivot_longer(everything()) %>% 
+  ggplot(., aes(x = value, fill = name)) + 
+    geom_histogram(position = "identity", alpha = 0.5) + 
+    theme_classic()
+
+# Create map of the dissimilarity of pixels from existing plots
+map_plot_vis_out_list <- lapply(names(old_dist_list), function(x) {  
+  map_plot_vis(als_sel, old_dist_list[[x]], p = subplots_fil) + 
+    scale_fill_scico(
+      name = paste0("Relative ", x, " distance to nearest plot"), 
+      palette = "bamako",
+      limits = c(0, 8),
+      oob = scales::squish
+    ) +
+    guides(
+      fill = guide_colourbar(
+        title.position = "top",  # optional
+        barwidth = 20,           # increase length (default is ~5)
+        barheight = 1            # keep it slim
+      )
+    )
+})
+names(map_plot_vis_out_list) <- names(old_dist_list)
+
+lapply(names(map_plot_vis_out_list), function(x) { 
+  ggsave(map_plot_vis_out_list[[x]], width = 8, height = 6, 
+    file = paste0("./img/map_plot_vis_out_", x, ".png"))
+})
 
 # Create plot of existing plots within landscape PCA space 
 pca_plot_vis_out <- pca_plot_vis(old_pca$r_pca$x, old_pca$p_pca)
@@ -130,17 +162,31 @@ ggsave(pca_classif_vis_out, width = 6, height = 4, file =
   "./img/pca_classif_vis_out.png")
 
 # Extract candidate plot locations (50% sample of pixels in the landscape)
+# Excluding existing plots
 # XY coordinates of each candidate location
-cand_cds <- as.data.frame(crds(als_sel))
+subplots_cent <- subplots_fil %>% 
+  st_centroid() %>% 
+  vect() %>% 
+  geom(.) %>% 
+  as.data.frame() %>%
+  dplyr::select(x, y) %>% 
+  cellFromXY(als_sel, .)
+als_sel_noplot <- als_sel
+als_sel_noplot[subplots_cent] <- NA
+cand_cds <- as.data.frame(crds(als_sel_noplot))
 cand <- cand_cds[sample(seq_len(nrow(cand_cds)), floor(nrow(cand_cds) / 2)),]
 # This could also be, for example, locations based on accessibility within the site
 # or existing plots that could be re-measured
+
+# Map the candidate plots (pixels)
+map_plot_vis_out_list$euclidean + 
+  geom_point(data = cand, aes(x = x, y = y), colour = "blue")
 
 # Extract raster values for candidate plot locations
 cand_ext <- extract_plot_metrics(als_sel, cand)
 
 # Put candidate plots in PCA space
-cand_pca <- pca_landscape(als_sel, cand_ext)
+cand_pca <- pca_landscape(als_sel, cand_ext, center = TRUE, scale. = TRUE)
 # Returns PCA objects for pixels and candidate plots
 
 # Check original landscape PCA should be identical to new landscape PCA
@@ -157,7 +203,8 @@ ggplot() +
   theme_bw()
 # Candidate plots are a subset of the original pixels
 
-# Optimally locate new plots within landscape based on PCA scores
+# Optimally locate new plots within landscape based on PCA scores using
+# different methods
 opt_maximin <- maximin_select(
   r_pca = cand_pca$r_pca$x, 
   p_new_pca = cand_pca$p_pca,
@@ -166,7 +213,6 @@ opt_maximin <- maximin_select(
   n_pca = 3
 )
 
-# Do the same but using the minimax algorithm
 opt_minimax <- minimax_select(
   r_pca = cand_pca$r_pca$x, 
   p_new_pca = cand_pca$p_pca,
@@ -180,93 +226,180 @@ opt_meanmin <- meanmin_select(
   p_new_pca = cand_pca$p_pca,
   p_pca = old_pca$p_pca,
   n_plots = 12, 
-  n_pca = 3,
-  method = "euclidean"
+  n_pca = 3
 )
+
+opt_maxilhs <- lhs_select(
+  r_pca = cand_pca$r_pca$x, 
+  p_new_pca = cand_pca$p_pca,
+  p_pca = old_pca$p_pca,
+  n_plots = 12, 
+  n_pca = 3
+)
+
+opt_kmeans <- kmeans_select(
+  r_pca = cand_pca$r_pca$x, 
+  p_new_pca = cand_pca$p_pca,
+  p_pca = old_pca$p_pca,
+  n_plots = 12, 
+  n_pca = 3
+)
+
+# Create list of results
+opt_list <- list(
+  maximin = opt_maximin,
+  minimax = opt_minimax,
+  meanmin = opt_meanmin,
+  maxilhs = opt_maxilhs,
+  kmeans = opt_kmeans)
 
 # Check no selections are duplicated
-# stopifnot(all(!duplicated(opt_maximin)))
-# stopifnot(all(!duplicated(opt_minimax)))
-# stopifnot(all(!duplicated(opt_meanmin)))
+lapply(opt_list, function(x) { 
+  stopifnot(all(!duplicated(x)))
+})
 
-# Select one method
-opt_sel <- opt_meanmin
+# Create PCA plots to check results are valid for each method
+wrap_plots(lapply(names(opt_list), function(x) { 
 
-# Extract PCA scores for proposed plots
-cand_pca_sel <- cand_pca$p_pca[opt_sel,]
+  # Extract PCA scores for proposed plots
+  cand_pca_sel <- cand_pca$p_pca[opt_list[[x]],]
 
-# Combine PCA scores of existing and proposed plots
-old_cand_pca_sel <- rbind(old_pca$p_pca, cand_pca_sel)
+  # Combine PCA scores of existing and proposed plots
+  old_cand_pca_sel <- rbind(old_pca$p_pca, cand_pca_sel)
 
-# Create a PCA biplot to check data
-ggplot() + 
-  geom_point(data = cand_pca$r_pca$x, aes(x = PC1, y = PC2), size = 2) + 
-  geom_point(data = old_pca$p_pca, aes(x = PC1, y = PC2), colour = "green", size = 0.6) + 
-  geom_point(data = cand_pca_sel, aes(x = PC1, y = PC2), colour = "red", size = 0.5) + 
-  theme_bw()
+  # Create a PCA biplot to check data
+  ggplot() + 
+    geom_point(data = cand_pca$r_pca$x, aes(x = PC1, y = PC2), size = 2) + 
+    geom_point(data = old_pca$p_pca, aes(x = PC1, y = PC2), colour = "green", size = 0.6) + 
+    geom_point(data = cand_pca_sel, aes(x = PC1, y = PC2), colour = "red", size = 0.5) + 
+    theme_bw() + 
+    ggtitle(x)
+}))
 # Candidate plots are a subset of the original pixels 
+# for all methods
 
-# Analyse representativeness of existing and proposed plots
-old_cand_dist <- pca_dist(cand_pca$r_pca$x, old_cand_pca_sel, n_pca = 3, k = 1)
+# Create maps with results for each method
+map_plot_vis_new_out_list <- lapply(names(opt_list), function(x) { 
+  # Extract PCA scores for proposed plots
+  cand_pca_sel <- cand_pca$p_pca[opt_list[[x]],]
 
-# Create map of the dissimilarity of pixels from proposed and existing plots 
-map_plot_vis_new_out <- map_plot_vis(
-  r = als_sel, 
-  r_dist = old_cand_dist, 
-  p = subplots_fil, 
-  p_new = cand[opt_sel,]
-) +
-  scale_fill_scico(
-    name = "Relative distance to nearest plot", 
-    palette = "bamako",
-    limits = c(0, 8),
-    oob = scales::squish
+  # Combine PCA scores of existing and proposed plots
+  old_cand_pca_sel <- rbind(old_pca$p_pca, cand_pca_sel)
+
+  # Analyse representativeness of existing and proposed plots
+  old_cand_dist <- pca_dist(cand_pca$r_pca$x, old_cand_pca_sel, n_pca = 3, k = 1)
+
+  # Create map of the dissimilarity of pixels from proposed and existing plots 
+  map_plot_vis(
+    r = als_sel, 
+    r_dist = old_cand_dist, 
+    p = subplots_fil, 
+    p_new = cand[opt_list[[x]],]
   ) +
-  guides(
-    fill = guide_colourbar(
-      title.position = "top",  # optional
-      barwidth = 20,           # increase length (default is ~5)
-      barheight = 1            # keep it slim
+    scale_fill_scico(
+      name = "Relative distance to nearest plot", 
+      palette = "bamako",
+      limits = c(0, 8),
+      oob = scales::squish
+    ) +
+    guides(
+      fill = guide_colourbar(
+        title.position = "top",  # optional
+        barwidth = 20,           # increase length (default is ~5)
+        barheight = 1            # keep it slim
+      )
     )
-  )
+})
+names(map_plot_vis_new_out_list) <- names(opt_list)
 
-ggsave(map_plot_vis_new_out, width = 8, height = 6, 
-  file = "./img/map_plot_vis_new_out.png")
+lapply(names(map_plot_vis_new_out_list), function(x) { 
+  ggsave(map_plot_vis_new_out_list[[x]], width = 8, height = 6, 
+    file = paste0("./img/map_plot_vis_new_out_", x, ".png"))
+})
 
-# Create plot of proposed and existing plots within landscape PCA space 
-pca_plot_vis_new_out <- pca_plot_vis(
-  r_pca = cand_pca$r_pca$x, 
-  p_pca = as.data.frame(old_pca$p_pca),
-  p_new_pca = as.data.frame(cand_pca_sel))
+# Create biplots of proposed and existing plots within landscape PCA space 
+pca_plot_vis_new_out_list <- lapply(names(opt_list), function(x) { 
 
-ggsave(pca_plot_vis_new_out, width = 6, height = 4, 
-  file = "./img/pca_plot_vis_new_out.png")
+  # Extract PCA scores for proposed plots
+  cand_pca_sel <- cand_pca$p_pca[opt_list[[x]],]
+
+  pca_plot_vis(
+    r_pca = cand_pca$r_pca$x, 
+    p_pca = as.data.frame(old_pca$p_pca),
+    p_new_pca = as.data.frame(cand_pca_sel))
+})
+names(pca_plot_vis_new_out_list) <- names(opt_list)
+
+lapply(names(pca_plot_vis_new_out_list), function(x) { 
+  ggsave(pca_plot_vis_new_out_list[[x]], width = 8, height = 6, 
+    file = paste0("./img/pca_plot_vis_new_out_", x, ".png"))
+})
 
 # Create histograms of pixel-plot dissimilarity with and without proposed plots
-hist_plot_vis_new_out <- hist_plot_vis(old_dist, old_cand_dist)
+hist_plot_vis_new_out_list <- lapply(names(opt_list), function(x) { 
+  # Extract PCA scores for proposed plots
+  cand_pca_sel <- cand_pca$p_pca[opt_list[[x]],]
 
-ggsave(hist_plot_vis_new_out, width = 6, height = 4, 
-  file = "./img/hist_plot_vis_new_out.png")
+  # Combine PCA scores of existing and proposed plots
+  old_cand_pca_sel <- rbind(old_pca$p_pca, cand_pca_sel)
 
-# Classify pixels by how well-represented they are by the existing and new plots
-cand_classif <- landscape_classif(
-  r_pca = old_pca$r_pca$x, 
-  p = old_pca$p_pca, 
-  p_new = cand_pca_sel,
-  n_pca = 3, 
-  ci = 0.95
-)
+  # Analyse representativeness of existing and proposed plots
+  old_cand_dist <- pca_dist(cand_pca$r_pca$x, old_cand_pca_sel, n_pca = 3, k = 1)
 
-# Create map of pixel classification 
-map_classif_vis_new_out <- map_classif_vis(als_sel, cand_classif)
+  # Create plot
+  hist_plot_vis(old_dist_list$euclidean, old_cand_dist)
+})
+names(hist_plot_vis_new_out_list) <- names(opt_list)
 
-ggsave(map_classif_vis_new_out, width = 8, height = 6, 
-  file = "./img/map_classif_vis_new_out.png")
+lapply(names(hist_plot_vis_new_out_list), function(x) { 
+  ggsave(hist_plot_vis_new_out_list[[x]], width = 8, height = 6, 
+    file = paste0("./img/hist_plot_vis_new_out_", x, ".png"))
+})
 
-# Create PCA biplot of pixel classification 
-pca_classif_vis_new_out <- pca_classif_vis(old_pca$r_pca$x, cand_classif) + 
-  guides(colour = guide_legend(nrow = 2))
+# Create maps which classify pixels by how well-represented they are by the
+# existing and new plots
+map_classif_vis_new_out_list <- lapply(names(opt_list), function(x) { 
+  # Extract PCA scores for proposed plots
+  cand_pca_sel <- cand_pca$p_pca[opt_list[[x]],]
 
-ggsave(pca_classif_vis_new_out, width = 6, height = 4, 
-  file = "./img/pca_classif_vis_new_out.png")
+  cand_classif <- landscape_classif(
+    r_pca = old_pca$r_pca$x, 
+    p = old_pca$p_pca, 
+    p_new = cand_pca_sel,
+    n_pca = 3, 
+    ci = 0.95
+  )
+
+  # Create map of pixel classification 
+  map_classif_vis_new_out <- map_classif_vis(als_sel, cand_classif)
+})
+names(map_classif_vis_new_out_list) <- names(opt_list)
+
+lapply(names(map_classif_vis_new_out_list), function(x) { 
+  ggsave(map_classif_vis_new_out_list[[x]], width = 8, height = 6, 
+    file = paste0("./img/map_classif_vis_new_out_", x, ".png"))
+})
+
+# Create PCA biplots of pixel classification 
+pca_classif_vis_new_out_list <- lapply(names(opt_list), function(x) { 
+  # Extract PCA scores for proposed plots
+  cand_pca_sel <- cand_pca$p_pca[opt_list[[x]],]
+
+  cand_classif <- landscape_classif(
+    r_pca = old_pca$r_pca$x, 
+    p = old_pca$p_pca, 
+    p_new = cand_pca_sel,
+    n_pca = 3, 
+    ci = 0.95
+  )
+
+  pca_classif_vis_new_out <- pca_classif_vis(old_pca$r_pca$x, cand_classif) + 
+    guides(colour = guide_legend(nrow = 2))
+})
+names(pca_classif_vis_new_out_list) <- names(opt_list)
+
+lapply(names(pca_classif_vis_new_out_list), function(x) { 
+  ggsave(pca_classif_vis_new_out_list[[x]], width = 8, height = 6, 
+    file = paste0("./img/pca_classif_vis_new_out_", x, ".png"))
+})
 
