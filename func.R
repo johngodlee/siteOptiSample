@@ -1,3 +1,23 @@
+###########
+# UTILITIES
+###########
+
+# Resample a raster to any resolution
+#
+# @param x raster object
+# @param res desired resolution, in units of the projection of `x`
+# @param ... additional arguments passed to `terra::resample()`
+#
+# @import terra
+#
+# @return raster object
+# 
+rastResample <- function(x, res, ...) { 
+  r_rs <- x
+  terra::res(r_rs) <- res
+  terra::resample(x, r_rs, ...)
+}
+
 ###################################
 # EXTRACT METRICS AT PLOT LOCATIONS
 ###################################
@@ -161,71 +181,6 @@ pca_dist <- function(x, y, n_pca = 3, k = 1, method = "euclidean") {
   return(out)
 }
 
-# Select candidate plots using the k-means centroids method
-#
-# @param r_pca PCA scores of landscape pixels in structural space.
-# @param p_new_pca Optional. PCA scores of candidate plots in structural space.
-#     If supplied, selection is restricted to these candidates; otherwise the
-#     full set of landscape pixels (`r_pca`) is used.
-# @param p_pca Optional. PCA scores of existing plots in structural space. If
-#     supplied, these plots are treated as fixed and excluded from clustering
-#     to prevent duplication.
-# @param n_plots Number of plots (clusters) to select.
-# @param n_pca Number of PCA axes used in the clustering space.
-#
-# @details
-# The k-means centroids method partitions the PCA space of all available pixels
-#     into `n_plots` clusters and selects the pixel nearest to each cluster
-#     centroid as a representative location. This approach samples regions of
-#     high data density proportionally, producing a design that represents
-#     typical conditions rather than extremes. When `p_pca` is provided, those
-#     plots are excluded from clustering so new selections cover the remaining
-#     space.
-#
-# @return Integer vector of pixel index values (rows of `r_pca`) for the
-#     proposed new plots, ordered arbitrarily by cluster.
-#
-# @import stats
-# @import FNN
-# 
-kmeans_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
-  # Restrict to selected PCA axes
-  r_pca <- as.matrix(r_pca[, 1:n_pca, drop = FALSE])
-  
-  # Determine candidate pool
-  if (!is.null(p_new_pca)) {
-    p_new_pca <- as.matrix(p_new_pca[, 1:n_pca, drop = FALSE])
-  } else {
-    p_new_pca <- r_pca
-  }
-  
-  # Optionally exclude existing plots from candidates
-  if (!is.null(p_pca)) {
-    p_pca <- as.matrix(p_pca[, 1:n_pca, drop = FALSE])
-    # Remove duplicates: any candidate exactly matching existing plot
-    keep <- !apply(p_new_pca, 1, function(row)
-      any(apply(p_pca, 1, function(p) all(abs(p - row) < .Machine$double.eps^0.5))))
-    p_new_pca <- p_new_pca[keep, , drop = FALSE]
-  }
-  
-  # Handle small candidate pool
-  if (nrow(p_new_pca) < n_plots) {
-    warning("Fewer candidates than requested plots; returning all candidates.")
-    return(seq_len(nrow(p_new_pca)))
-  }
-  
-  # Run k-means clustering on candidate PCA scores
-  km <- kmeans(p_new_pca, centers = n_plots, nstart = 10)
-  
-  # Find candidate closest to each centroid
-  centers <- km$centers
-  nn <- FNN::get.knnx(p_new_pca, centers, k = 1)
-  
-  # Convert to original indices
-  sel_idx <- as.integer(nn$nn.index)
-  
-  return(sel_idx)
-}
 
 ##############################################
 # IDENTIFY GAPS AND OPTIMALLY LOCATE NEW PLOTS
@@ -623,6 +578,72 @@ lhs_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pc
     # Remove selected candidate
     cand_idx <- cand_idx[-best_rel]
   }
+  
+  return(sel_idx)
+}
+
+# Select candidate plots using the k-means centroids method
+#
+# @param r_pca PCA scores of landscape pixels in structural space.
+# @param p_new_pca Optional. PCA scores of candidate plots in structural space.
+#     If supplied, selection is restricted to these candidates; otherwise the
+#     full set of landscape pixels (`r_pca`) is used.
+# @param p_pca Optional. PCA scores of existing plots in structural space. If
+#     supplied, these plots are treated as fixed and excluded from clustering
+#     to prevent duplication.
+# @param n_plots Number of plots (clusters) to select.
+# @param n_pca Number of PCA axes used in the clustering space.
+#
+# @details
+# The k-means centroids method partitions the PCA space of all available pixels
+#     into `n_plots` clusters and selects the pixel nearest to each cluster
+#     centroid as a representative location. This approach samples regions of
+#     high data density proportionally, producing a design that represents
+#     typical conditions rather than extremes. When `p_pca` is provided, those
+#     plots are excluded from clustering so new selections cover the remaining
+#     space.
+#
+# @return Integer vector of pixel index values (rows of `r_pca`) for the
+#     proposed new plots, ordered arbitrarily by cluster.
+#
+# @import stats
+# @import FNN
+# 
+kmeans_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+  # Restrict to selected PCA axes
+  r_pca <- as.matrix(r_pca[, 1:n_pca, drop = FALSE])
+  
+  # Determine candidate pool
+  if (!is.null(p_new_pca)) {
+    p_new_pca <- as.matrix(p_new_pca[, 1:n_pca, drop = FALSE])
+  } else {
+    p_new_pca <- r_pca
+  }
+  
+  # Optionally exclude existing plots from candidates
+  if (!is.null(p_pca)) {
+    p_pca <- as.matrix(p_pca[, 1:n_pca, drop = FALSE])
+    # Remove duplicates: any candidate exactly matching existing plot
+    keep <- !apply(p_new_pca, 1, function(row)
+      any(apply(p_pca, 1, function(p) all(abs(p - row) < .Machine$double.eps^0.5))))
+    p_new_pca <- p_new_pca[keep, , drop = FALSE]
+  }
+  
+  # Handle small candidate pool
+  if (nrow(p_new_pca) < n_plots) {
+    warning("Fewer candidates than requested plots; returning all candidates.")
+    return(seq_len(nrow(p_new_pca)))
+  }
+  
+  # Run k-means clustering on candidate PCA scores
+  km <- kmeans(p_new_pca, centers = n_plots, nstart = 10)
+  
+  # Find candidate closest to each centroid
+  centers <- km$centers
+  nn <- FNN::get.knnx(p_new_pca, centers, k = 1)
+  
+  # Convert to original indices
+  sel_idx <- as.integer(nn$nn.index)
   
   return(sel_idx)
 }

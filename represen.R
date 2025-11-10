@@ -121,9 +121,9 @@ map_plot_vis_out_list <- lapply(names(old_dist_list), function(x) {
     ) +
     guides(
       fill = guide_colourbar(
-        title.position = "top",  # optional
-        barwidth = 20,           # increase length (default is ~5)
-        barheight = 1            # keep it slim
+        title.position = "top",
+        barwidth = 20,
+        barheight = 1
       )
     )
 })
@@ -304,9 +304,9 @@ map_plot_vis_new_out_list <- lapply(names(opt_list), function(x) {
     ) +
     guides(
       fill = guide_colourbar(
-        title.position = "top",  # optional
-        barwidth = 20,           # increase length (default is ~5)
-        barheight = 1            # keep it slim
+        title.position = "top",
+        barwidth = 20, 
+        barheight = 1
       )
     )
 })
@@ -403,3 +403,77 @@ lapply(names(pca_classif_vis_new_out_list), function(x) {
     file = paste0("./img/pca_classif_vis_new_out_", x, ".png"))
 })
 
+
+###################################################
+# TRY WORKFLOW WITH PLOTS LARGER THAN RASTER PIXELS
+###################################################
+
+# Create a raster of landscape PCA values 
+r_pca_rast <- rast(replicate(ncol(old_pca$r_pca$x), als_sel[[1]]))
+values(r_pca_rast)[complete.cases(values(r_pca_rast)),] <- old_pca$r_pca$x
+names(r_pca_rast) <- colnames(old_pca$r_pca$x)
+
+# Resample landscaep PCA raster to 4 ha (200x200 m)
+r_pca_rast_big <- rastResample(r_pca_rast, 200)
+
+# Extract values from landscape PCA raster 
+r_pca_rast_big_val <- values(r_pca_rast_big)[complete.cases(values(r_pca_rast_big)),]
+
+# Optionally mask pixels containing existing plots
+r_pca_rast_big_fil <- mask(r_pca_rast_big, vect(subplots_fil), inverse = TRUE)
+
+# Extract values from masked landscape PCA
+r_pca_rast_big_fil_val <- values(r_pca_rast_big_fil)[
+  complete.cases(values(r_pca_rast_big_fil)),]
+
+# Identify optimal locations for additional 4 ha (200x200 m) plots 
+# Using maximin algorithm. Could be any of the algorithms.
+opt_maximin_big <- maximin_select(
+  r_pca = r_pca_rast_big_val,  # PCA values resampled to 200x200 m
+  p_new_pca = r_pca_rast_big_fil_val,  # Candidate plot PCA values
+  p_pca = old_pca$p_pca,  # PCA values of existing plots
+  n_plots = 5, 
+  n_pca = 3
+)
+
+# Extract PCA scores of proposed plots
+cand_pca_sel_big <- r_pca_rast_big_val[opt_maximin_big,]
+
+# Combine PCA scores of existing and proposed plots
+old_cand_big_pca_sel <- rbind(old_pca$p_pca, cand_pca_sel_big)
+
+# Analyse representativeness of existing and proposed plots for each pixel
+cand_big_dist <- pca_dist(r_pca_rast_big_val, old_cand_big_pca_sel, 
+  n_pca = 3, k = 1)
+
+# Extract coordinates for candidate plots
+cand_pca_sel_big_cds <- as.data.frame(crds(r_pca_rast_big))[opt_maximin_big,]
+
+# Create PCA biplot of proposed and existing plots within 200x200 m 
+# landscape PCA space
+pca_plot_vis(
+  r_pca = r_pca_rast_big_val,
+  p_pca = as.data.frame(old_pca$p_pca),
+  p_new_pca = as.data.frame(cand_pca_sel_big))
+
+# Create map of the dissimilarity of pixels from proposed and existing plots 
+map_plot_vis_new_big <- map_plot_vis(
+  r = r_pca_rast_big, 
+  r_dist = cand_big_dist, 
+  p = subplots_fil, 
+  p_new = cand_pca_sel_big_cds 
+  ) +
+  scale_fill_scico(
+    name = "Relative distance to nearest plot", 
+    palette = "bamako"
+  ) +
+  guides(
+    fill = guide_colourbar(
+      title.position = "top",
+      barwidth = 20,
+      barheight = 1 
+    )
+  )
+
+ggsave(map_plot_vis_new_big, width = 8, height = 6, 
+  file = "./img/map_plot_vis_new_big.png")
