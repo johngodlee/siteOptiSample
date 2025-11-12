@@ -51,7 +51,7 @@ isSFType <- function(x, type = NULL) {
 # @import terra
 # @import sf
 # 
-extract_plot_metrics <- function(r, p, fun = mean, ...) {
+extractPlotMetrics <- function(r, p, fun = mean, ...) {
   # Check type of r
   if (!inherits(r, "SpatRaster")) {
     stop("r must be of class SpatRaster")
@@ -60,16 +60,16 @@ extract_plot_metrics <- function(r, p, fun = mean, ...) {
   # Convert p to sf if not already
   if (isSFType(p, c("POINT", "POLYGON"))) {
     p_vect <- vect(p)
-  } else if (inherits(p, "data.frame") && 
+  } else if (inherits(p, c("data.frame", "matrix")) && 
       all(c("x", "y") %in% colnames(p))) {
-    p_vect <- st_as_sf(p, coords = c("x", "y"), crs = crs(r))
+    p_vect <- st_as_sf(as.data.frame(p), coords = c("x", "y"), crs = crs(r))
   } else {
     stop("p must either be an sf POINT/POLYGON object or a data.frame with columns 'x' and 'y'")
   }
 
   # Extract metrics for each plot polygon
-  out <- extract(r, p_vect, fun = fun, 
-    na.rm = TRUE, ID = FALSE, ...)
+  out <- as.matrix(extract(r, p_vect, fun = fun, 
+    na.rm = TRUE, ID = FALSE, ...))
   
   # Return
   return(out)
@@ -84,13 +84,13 @@ extract_plot_metrics <- function(r, p, fun = mean, ...) {
 # 
 # @param r SpatRaster with structural metrics
 # @param p optional dataframe containing structural metrics for each plot, e.g.
-#     as returned by `extract_plot_metrics()`
+#     as returned by `extractPlotMetrics()`
 # @param ... additional arguments passed to `prcomp()`  
 #
 # @return list containing: `r_pca`: PCA object from pixel values, and
 #     optionally `p_pca`: plot values in PCA space
 # 
-pca_landscape <- function(r, p = NULL, ...) {
+PCALandscape <- function(r, p = NULL, ...) {
   # Check type of r
   if (!inherits(r, "SpatRaster")) {
     stop("r must be of class SpatRaster")
@@ -119,7 +119,7 @@ pca_landscape <- function(r, p = NULL, ...) {
     "p_pca" = p_pca))
 }
 
-euclidean_dist <- function(x, y) {
+euclideanDist <- function(x, y) {
   out <- matrix(NA_real_, nrow = nrow(x), ncol = nrow(y))
   for (i in seq_len(nrow(x))) {
     for (j in seq_len(nrow(y))) {
@@ -130,7 +130,7 @@ euclidean_dist <- function(x, y) {
   return(out)
 }
 
-mahalanobis_dist <- function(x, y) {
+mahanalobisDist <- function(x, y) {
   cov <- cov(rbind(x, y))
   S_inv <- solve(cov)
   out <- matrix(NA_real_, nrow = nrow(x), ncol = nrow(y))
@@ -157,13 +157,13 @@ mahalanobis_dist <- function(x, y) {
 #
 # @import proxy
 # 
-pca_dist <- function(x, y, n_pca = 3, k = 1, method = "euclidean") {
+pcaDist <- function(x, y, n_pca = 3, k = 1, method = "euclidean") {
   # Calculate nearest neighbor distances
   # For each landscape pixel, find distance to nearest plot
   if (method == "mahalanobis") {
-    dists_mat <- mahalanobis_dist(x[,1:n_pca], y[,1:n_pca])
+    dists_mat <- mahanalobisDist(x[,1:n_pca], y[,1:n_pca])
   } else if (method == "euclidean") {
-    dists_mat <- euclidean_dist(x[,1:n_pca], y[,1:n_pca])
+    dists_mat <- euclideanDist(x[,1:n_pca], y[,1:n_pca])
   } else {
     stop("method must be either 'euclidean' or 'mahalanobis'")
   }
@@ -208,7 +208,7 @@ pca_dist <- function(x, y, n_pca = 3, k = 1, method = "euclidean") {
 #
 # @import proxy
 # 
-maximin_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+maximinSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[,1:n_pca, drop = FALSE])
 
@@ -293,7 +293,7 @@ maximin_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, 
 # 
 # @import proxy
 # 
-minimax_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+minimaxSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[,1:n_pca, drop = FALSE])
 
@@ -372,7 +372,7 @@ minimax_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, 
 # 
 # @import proxy
 # 
-meanmin_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+meanminSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[,1:n_pca, drop = FALSE])
 
@@ -475,7 +475,7 @@ meanmin_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, 
 # @import lhs
 # @import FNN
 # 
-lhs_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+lhsSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[, 1:n_pca, drop = FALSE])
   
@@ -609,7 +609,7 @@ lhs_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pc
 # @import stats
 # @import FNN
 # 
-kmeans_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+kmeansSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[, 1:n_pca, drop = FALSE])
   
@@ -648,6 +648,90 @@ kmeans_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
   return(sel_idx)
 }
 
+###########################
+# WRAPPER ANALYSIS FUNCTION
+###########################
+
+# Define a wrapper function to do the entire process
+newPlotSelect <- function(r, p, p_new_dim, n_plots, n_pca, 
+  pcaDist_method = "euclidean", resample_fun = mean, 
+  select_fun = meanminSelect, ...) {
+  # If size of new plots not specified, set to pixel resolution
+  if (is.null(p_new_dim)) {
+    p_new_dim <- res(r_pca)
+  }
+
+  # Extract metrics from raster for each existing plot
+  old_ext <- extractPlotMetrics(r, p, fun = resample_fun)
+
+  # Put pixels and existing plots in the same PCA space
+  old_pca <- PCALandscape(r, old_ext, center = TRUE, scale. = TRUE)
+
+  # Extract distance of pixels from existing plots in PCA space
+  old_pca_dist <- pcaDist(old_pca$r_pca$x, old_pca$p_pca,
+    n_pca = n_pca, k = 1, method = pcaDist_method)
+
+  # Create a raster of landscape PCA values 
+  r_pca_rast <- rast(replicate(ncol(old_pca$r_pca$x), r[[1]]))
+  values(r_pca_rast)[complete.cases(values(r_pca_rast)),] <- old_pca$r_pca$x
+  names(r_pca_rast) <- colnames(old_pca$r_pca$x)
+
+  # Resample landscape PCA raster to desired size of new plots
+  r_pca_rast_big <- rastResample(r_pca_rast, p_new_dim)
+
+  # Resample ALS values to desired size of new plots
+  r_big <- rastResample(r, p_new_dim)
+
+  # Extract values from landscape PCA raster 
+  r_pca_rast_big_val <- values(r_pca_rast_big)[complete.cases(values(r_pca_rast_big)),]
+
+  # Mask pixels containing existing plots
+  r_pca_rast_big_fil <- mask(r_pca_rast_big, vect(p), inverse = TRUE)
+
+  # Extract values from masked landscape PCA
+  r_pca_rast_big_fil_val <- values(r_pca_rast_big_fil)[
+    complete.cases(values(r_pca_rast_big_fil)),]
+
+  # Identify optimal locations for additional plots 
+  # Using chosen algorithm. Could be any of the algorithms.
+  opt_select <- select_fun(
+    r_pca = r_pca_rast_big_val,  # PCA values resampled to 200x200 m
+    p_new_pca = r_pca_rast_big_fil_val,  # new plot PCA values
+    p_pca = old_pca$p_pca,  # PCA values of existing plots
+    n_plots = n_plots, 
+    n_pca = n_pca
+  )
+
+  # Extract PCA scores of new plots
+  new_pca_sel_big <- r_pca_rast_big_val[opt_select,]
+
+  # Combine PCA scores of old and new plots
+  new_big_pca_sel <- rbind(old_pca$p_pca, new_pca_sel_big)
+
+  # Extract distance of pixels from old and new plots in PCA space
+  new_pca_dist <- pcaDist(old_pca$r_pca$x, new_big_pca_sel, 
+    n_pca = 3, k = 1)
+
+  # Extract coordinates for new plots
+  new_pca_sel_cds <- crds(r_pca_rast_big)[opt_select,]
+
+  # Extract metrics from raster for each new plot
+  new_ext <- extractPlotMetrics(r_big, new_pca_sel_cds, fun = resample_fun)
+
+  # Create list of outputs
+  out <- list(
+    r_pca = old_pca$r_pca,  # PCA object for pixels
+    r_dist = old_pca_dist,  # Distance of pixels to existing plots
+    r_new_dist = new_pca_dist,  # Distance of pixels to new and existing plots
+    p_ext = old_ext,  # Extracted ALS metrics from existing plots
+    p_new_ext = new_ext,  # Extracted ALS metrics from new plots 
+    p_pca = old_pca$p_pca,  # PCA scores for existing plots
+    p_new_pca = new_pca_sel_big,  # PCA scores for new plots
+    p_new_coords = new_pca_sel_cds)  # Coordinates for new plots
+
+  # Return
+  return(out)
+}
 
 ###################
 # VISUALISE RESULTS
@@ -656,7 +740,7 @@ kmeans_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
 # Create a map of landscape representativeness by plots
 #
 # @param r raster
-# @param r_dist values of structural distance, e.g. as returned by `pca_dist()`
+# @param r_dist values of structural distance, e.g. as returned by `pcaDist()`
 # @param p optional existing plot locations, either an sf object containing plot
 #     polygons or points, or a dataframe with two columns `x` and `y`
 #     describing coordinates in the same coordinate system as `r`
@@ -668,15 +752,15 @@ kmeans_select <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
 # @import scico 
 # @import sf 
 # 
-map_plot_vis <- function(r, r_dist, p = NULL, p_new = NULL) {
+visMap <- function(r, r_dist, p = NULL, p_new = NULL) {
 
   # Convert plot locations to dataframe if not already
   if (!is.null(p)) {
     if (isSFType(p, c("POINT", "POLYGON"))) {
       p_old <- as.data.frame(st_coordinates(st_centroid(p)))
       names(p_old) <- c("x", "y")
-    } else if (inherits(p, "data.frame") && all(c("x", "y") %in% colnames(p))) {
-      p_old <- p
+    } else if (inherits(p, c("data.frame", "matrix")) && all(c("x", "y") %in% colnames(p))) {
+      p_old <- as.data.frame(p)
     } else {
       stop("p must either be an sf POINT/POLYGON object or a data.frame with columns 'x' and 'y'")
     }
@@ -689,8 +773,8 @@ map_plot_vis <- function(r, r_dist, p = NULL, p_new = NULL) {
     if (isSFType(p_new, c("POINT", "POLYGON"))) {
       p_new <- as.data.frame(st_coordinates(st_centroid(p_new)))
       names(p_new) <- c("x", "y")
-    } else if (inherits(p_new, "data.frame") && all(c("x", "y") %in% colnames(p_new))) {
-      p_new <- p_new
+    } else if (inherits(p_new, c("data.frame", "matrix")) && all(c("x", "y") %in% colnames(p_new))) {
+      p_new <- as.data.frame(p_new)
     } else {
       stop("p_new must either be an sf POINT/POLYGON object or a data.frame with columns 'x' and 'y'")
     }
@@ -743,15 +827,15 @@ map_plot_vis <- function(r, r_dist, p = NULL, p_new = NULL) {
 # Create a PCA biplot of landscape representativeness
 # 
 # @param r_pca PCA scores of pixels in structural space, as returned by
-#     `pca_landscape()$r_pca`
+#     `PCALandscape()$r_pca`
 # @param p_pca PCA scores of existing plots in structural space, as returned
-#     by `pca_landscape()$p_pca`
+#     by `PCALandscape()$p_pca`
 # @param p_new_pca PCA scores of proposed plots in structural space, as returned
-#     by `pca_landscape()$p_pca`
+#     by `PCALandscape()$p_pca`
 # 
 # @import ggplot2
 # 
-pca_plot_vis <- function(r_pca, p_pca = NULL, p_new_pca = NULL) {
+visPCA <- function(r_pca, p_pca = NULL, p_new_pca = NULL) {
 
   # Extract PCA values from r_pca
   pca_pt_r <- as.data.frame(r_pca[,paste0("PC", 1:2)])
@@ -806,15 +890,15 @@ pca_plot_vis <- function(r_pca, p_pca = NULL, p_new_pca = NULL) {
 # adding new plots
 #
 # @param dist values of structural distance to nearest existing plot, as
-#     returned by `pca_dist()`
+#     returned by `pcaDist()`
 # @param dist_new optional values of structural distance to nearest proposed
-#     plot, as returned by `pca_dist()`
+#     plot, as returned by `pcaDist()`
 # 
 # @import ggplot2
 # @import dplyr
 # @import tidyr
 # 
-hist_plot_vis <- function(dist, dist_new = NULL) {
+visHist <- function(dist, dist_new = NULL) {
 
   # Create dataframe
   df <- data.frame(
@@ -854,16 +938,16 @@ hist_plot_vis <- function(dist, dist_new = NULL) {
 #     proposed) plots
 #
 # @param r_pca PCA scores of pixels in structural space, as returned by
-#     `pca_landscape()$r_pca`
+#     `PCALandscape()$r_pca`
 # @param p PCA scores of candidate plots in structural space, as returned
-#     by `pca_landscape()$p_pca`
+#     by `PCALandscape()$p_pca`
 # @param p_new optional PCA scores of candidate plots in structural space, as
-#     returned by `pca_landscape()$p_pca`
+#     returned by `PCALandscape()$p_pca`
 # @param n_pca number of PCA axes used in analysis
 # @param ci quantile threshold for distances, e.g. 0.95 = 95th percentile of
 #     distances among plots 
 # 
-landscape_classif <- function(r_pca, p, p_new = NULL, 
+classifLandscape <- function(r_pca, p, p_new = NULL, 
   n_pca = 3, ci = 0.95) {
 
   # Extract PCA scores from chosen PCs
@@ -940,12 +1024,12 @@ landscape_classif <- function(r_pca, p, p_new = NULL,
 # 
 # @param r raster
 # @param classif dataframe with classifications of pixels in column `group`, as
-#     returned by `landscape_classif()`
+#     returned by `classifLandscape()`
 # 
 # @import ggplot2 
 # @import terra
 # 
-map_classif_vis <- function(r, classif) { 
+visMapClassif <- function(r, classif) { 
 
   # Check type of r
   if (!inherits(r, "SpatRaster")) {
@@ -980,13 +1064,13 @@ map_classif_vis <- function(r, classif) {
 # Create a PCA biplot of pixel classifications 
 # 
 # @param r_pca PCA scores of pixels in structural space, as returned by
-#     `pca_landscape()$r_pca`
+#     `PCALandscape()$r_pca`
 # @param classif dataframe with classifications of pixels in column `group`, as
-#     returned by `landscape_classif()`
+#     returned by `classifLandscape()`
 # 
 # @import ggplot2
 # 
-pca_classif_vis <- function(r_pca, classif) {
+visPCAClassif <- function(r_pca, classif) {
   r_df <- cbind(as.data.frame(r_pca), classif)
 
   out <- ggplot(r_df, aes(PC1, PC2, colour = group)) +
