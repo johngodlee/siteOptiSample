@@ -462,3 +462,53 @@ visHist(wout$r_dist, wout$r_new_dist)
 
 # Compare distance with old plots only vs. including new plots
 plot(wout$r_dist, wout$r_new_dist)
+
+
+
+# Randomly select candidate indices
+cand_ind = sample(
+  x = seq_len(nrow(old_pca$r_pca$x)), 
+  size = floor(nrow(old_pca$r_pca$x)*0.75))
+
+# Randomly place 10 existing plots in the remainining non-candidate pixels 
+old_ind = sample(
+  x = seq_len(nrow(old_pca$r_pca$x))[-cand_ind], 
+  size = 10)
+
+opt_meanmin <- meanminSelect(
+  r_pca = cand_pca$r_pca$x, 
+  cand_ind = cand_ind,
+  old_ind = old_ind,
+  n_plots = 12, 
+  n_pca = 3
+)
+
+r_coords <- as.data.frame(crds(r))
+
+ggplot() + 
+  geom_point(
+    data = r_coords[cand_ind,], 
+    aes(x = x, y = y), 
+    colour = "blue", size = 3) + 
+  geom_point(
+    data = r_coords[old_ind,], 
+    aes(x = x, y = y), 
+    colour = "green",
+    size = 2) +
+  geom_point(
+    data = r_coords[opt_meanmin,], 
+    aes(x = x, y = y), 
+    colour = "red",
+    size = 1)
+
+
+# Extract PCA scores for proposed plots
+cand_pca_sel <- cand_pca$r_pca$x[opt_meanmin,]
+
+# Create a PCA biplot to check data
+ggplot() + 
+  geom_point(data = cand_pca$r_pca$x, aes(x = PC1, y = PC2), size = 2) + 
+  geom_point(data = old_pca$p_pca, aes(x = PC1, y = PC2), colour = "green", size = 0.6) + 
+  geom_point(data = cand_pca_sel, aes(x = PC1, y = PC2), colour = "red", size = 0.5) + 
+  theme_bw() + 
+  ggtitle(x)

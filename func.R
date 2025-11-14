@@ -189,10 +189,11 @@ pcaDist <- function(x, y, n_pca = 3, k = 1, method = "euclidean") {
 # Iteratively add candidate plots using the maximin algorithm
 # 
 # @param r_pca PCA scores of pixels in structural space
-# @param p_new_pca optional, PCA scores of candidate plots in structural space.
-#     If supplied, selection is restricted to these candidates; otherwise the
-#     full set of landscape pixels in `r_pca` is used.
-# @param p_pca optional, PCA scores of existing plots in structural space
+# @param new_ind optional, row IDs in `r_pca` specifying candidate plot
+#     locations. If not supplied, the full set of landscape pixels in `r_pca`
+#     is used.
+# @param old_ind optional, row IDs in `r_pca` specifying existing plot
+#     locations. 
 # @param n_plots maximum number of new plots to add
 # @param n_pca number of PCA axes used in analysis
 #
@@ -208,18 +209,20 @@ pcaDist <- function(x, y, n_pca = 3, k = 1, method = "euclidean") {
 #
 # @import proxy
 # 
-maximinSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+maximinSelect <- function(r_pca, new_ind = NULL, old_ind = NULL,
+  n_plots = 10, n_pca = 3) {
+
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[,1:n_pca, drop = FALSE])
 
-  if (!is.null(p_new_pca)) {
-    p_new_pca <- as.matrix(p_new_pca[,1:n_pca, drop = FALSE])
-  } else {
-    p_new_pca <- r_pca
-  }
+  cand_pca <- r_pca
+  if (!is.null(new_ind)) {
+    cand_pca[-new_ind,] <- NA_real_
+  } 
 
-  if (!is.null(p_pca)) {
-    p_pca <- as.matrix(p_pca[,1:n_pca, drop = FALSE])
+  if (!is.null(old_ind)) {
+    p_pca <- r_pca[old_ind, , drop = FALSE]
+    cand_pca[old_ind,] <- NA_real_
   }
   
   # Initialize minimum distances to existing plots
@@ -230,12 +233,20 @@ maximinSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
   }
 
   # Initialize selected indices
-  cand_idx <- seq_len(nrow(p_new_pca))
+  new_indx <- new_ind
   sel_idx <- c()
 
   for (i in seq_len(n_plots)) {
-    # Compute minimum distance to nearest current plot for each candidate
-    d_cands <- sapply(seq_len(nrow(p_new_pca)), function(j) {
+    # Check number of candidate plots
+    n_candidates <- sum(!is.na(cand_pca[,1]))
+    if (n_candidates == 0) {
+      warning("No potential candidates for plot ", i)
+      break
+    }
+
+    # TODO: Compute minimum distance to nearest current plot for each candidate
+    # For each candidate:
+    d_cands <- sapply(seq_len(nrow(cand_pca)), function(j) {
       if (is.null(current_plots)) {
         # If no existing plots, distance to whole raster space
         min(proxy::dist(r_pca, p_new_pca[j, , drop = FALSE]))
@@ -272,10 +283,11 @@ maximinSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
 # Iteratively add candidate plots using the minimax algorithm
 # 
 # @param r_pca PCA score of pixels in structural space
-# @param p_new_pca optional, PCA scores of candidate plots in structural space.
-#     If supplied, selection is restricted to these candidates; otherwise the
-#     full set of landscape pixels in `r_pca` is used.
-# @param p_pca optional, PCA scores of existing plots in structural space
+# @param new_ind optional, row IDs in `r_pca` specifying candidate plot
+#     locations. If not supplied, the full set of landscape pixels in `r_pca`
+#     is used.
+# @param old_ind optional, row IDs in `r_pca` specifying existing plot
+#     locations. 
 # @param n_plots maximum number of new plots to add
 # @param n_pca number of PCA axes used in analysis
 #
@@ -293,7 +305,7 @@ maximinSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
 # 
 # @import proxy
 # 
-minimaxSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+minimaxSelect <- function(r_pca, new_ind = NULL, old_ind = NULL, n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[,1:n_pca, drop = FALSE])
 
@@ -349,13 +361,14 @@ minimaxSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
   return(sel_idx)
 }
 
-# Iteratively add candidate plots using the minimax algorithm
+# Iteratively add candidate plots using the meanmin algorithm
 # 
 # @param r_pca PCA score of pixels in structural space
-# @param p_new_pca optional, PCA scores of candidate plots in structural space.
-#     If supplied, selection is restricted to these candidates; otherwise the
-#     full set of landscape pixels in `r_pca` is used.
-# @param p_pca optional, PCA scores of existing plots in structural space
+# @param new_ind optional, row IDs in `r_pca` specifying candidate plot
+#     locations. If not supplied, the full set of landscape pixels in `r_pca`
+#     is used.
+# @param old_ind optional, row IDs in `r_pca` specifying existing plot
+#     locations. 
 # @param n_plots maximum number of new plots to add
 # @param n_pca number of PCA axes used in analysis
 #
@@ -372,18 +385,20 @@ minimaxSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
 # 
 # @import proxy
 # 
-meanminSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+meanminSelect <- function(r_pca, new_ind = NULL, old_ind = NULL, 
+  n_plots = 10, n_pca = 3) {
+
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[,1:n_pca, drop = FALSE])
 
-  if (!is.null(p_new_pca)) {
-    p_new_pca <- as.matrix(p_new_pca[,1:n_pca, drop = FALSE])
-  } else {
-    p_new_pca <- r_pca
-  }
+  cand_pca <- r_pca
+  if (!is.null(new_ind)) {
+    cand_pca[-new_ind,] <- NA_real_
+  } 
 
-  if (!is.null(p_pca)) {
-    p_pca <- as.matrix(p_pca[, 1:n_pca, drop = FALSE])
+  if (!is.null(old_ind)) {
+    p_pca <- r_pca[old_ind, , drop = FALSE]
+    cand_pca[old_ind,] <- NA_real_
   }
   
   # Initialize minimum distances to existing plots
@@ -395,44 +410,55 @@ meanminSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
   }
 
   # Prepare candidate index mapping to original input rows
-  cand_idx <- seq_len(nrow(p_new_pca))
+  new_indx <- new_ind
   sel_idx <- c()
 
   # Initialize selected indices
   for (i in seq_len(n_plots)) {
-    n_candidates <- nrow(p_new_pca)
+    # Check number of candidate plots
+    n_candidates <- sum(!is.na(cand_pca[,1]))
     if (n_candidates == 0) {
       warning("No potential candidates for plot ", i)
       break
     }
 
     # Compute mean distance if we added each candidate
-    mean_after <- sapply(seq_len(n_candidates), function(rel_j) {
-      cand_vec <- p_new_pca[rel_j, , drop = TRUE]
-      # vectorised Euclidean distance from all pixels to candidate
-      cand_mat <- matrix(cand_vec, nrow = nrow(r_pca), ncol = ncol(r_pca), byrow = TRUE)
-      new_min <- pmin(min_dists, sqrt(rowSums((r_pca - cand_mat)^2)))
-      mean(new_min)
+    # For each candidate:
+    mean_after <- sapply(seq_len(nrow(cand_pca)), function(j) {
+      cand_vec <- cand_pca[j, , drop = TRUE]
+      if (all(!is.na(cand_vec))) {
+        # Euclidean distance from all pixels to candidate
+        cand_mat <- matrix(cand_vec, nrow = nrow(r_pca), ncol = ncol(r_pca), byrow = TRUE)
+        new_min <- pmin(min_dists, sqrt(rowSums((r_pca - cand_mat)^2)))
+        mean(new_min, na.rm = TRUE) 
+      } else {
+       NA_real_
+      }
     })
 
     # choose best candidate (minimizes mean distance); break ties randomly
-    best_rel <- sample(which(mean_after == min(mean_after)), 1)
-    best_orig_idx <- cand_idx[best_rel]  # original index in input p_new_pca
-    sel_idx <- c(sel_idx, best_orig_idx)
+    best_rel <- sample(which(mean_after == min(mean_after, na.rm = TRUE)), 1)
+    best_orig_idx <- new_indx[best_rel]  # original index in r_pca
+    sel_idx <- c(sel_idx, best_orig_idx)  # Join new selection to previous 
 
     # Update min_dists using the chosen candidate
-    chosen_vec <- p_new_pca[best_rel, , drop = TRUE]
+    chosen_vec <- r_pca[best_rel, , drop = TRUE]
     chosen_mat <- matrix(chosen_vec, nrow = nrow(r_pca), ncol = ncol(r_pca), byrow = TRUE)
     d_chosen <- sqrt(rowSums((r_pca - chosen_mat)^2))
     min_dists <- pmin(min_dists, d_chosen)
 
-    # Remove chosen candidate from pool (and update cand_idx mapping)
-    p_new_pca <- if (n_candidates > 1) p_new_pca[-best_rel, , drop = FALSE] else matrix(nrow = 0, ncol = n_pca)
-    cand_idx <- cand_idx[-best_rel]
+    # Remove chosen candidate from pool (and update new_indx mapping)
+    if (n_candidates > 1) {
+      r_pca[best_rel,] <- NA_real_
+    }
 
-    if (nrow(p_new_pca) == 0) {
-      if (i < n_plots) warning("No suitable locations for plot ", i + 1)
-      break
+    new_indx <- new_indx[-best_rel]
+
+    if (all(is.na(r_pca[,1]))) {
+      if (i < n_plots) {
+        warning("No suitable locations for plot ", i + 1)
+        break
+      }
     }
   }
 
@@ -443,12 +469,11 @@ meanminSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
 # Select candidate plots using Latin Hypercube Sampling (LHS)
 #
 # @param r_pca PCA scores of landscape pixels in structural space
-# @param p_new_pca Optional. PCA scores of candidate plots in structural space.
-#     If supplied, selection is restricted to these candidates; otherwise the
-#     full set of landscape pixels (`r_pca`) is used.
-# @param p_pca Optional. PCA scores of existing plots in structural space; used
-#     only when enforcing a minimum spatial separation (`min_dist`) so existing
-#     plots are treated as already-selected for spatial exclusion.
+# @param new_ind optional, row IDs in `r_pca` specifying candidate plot
+#     locations. If not supplied, the full set of landscape pixels in `r_pca`
+#     is used.
+# @param old_ind optional, row IDs in `r_pca` specifying existing plot
+#     locations. 
 # @param n_plots Number of plots to select.
 # @param n_pca Number of PCA axes used in the sampling space.
 # @param min_dist Minimum spatial distance (in map units) required between any
@@ -475,7 +500,7 @@ meanminSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n
 # @import lhs
 # @import FNN
 # 
-lhsSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+lhsSelect <- function(r_pca, new_ind = NULL, old_ind = NULL, n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[, 1:n_pca, drop = FALSE])
   
@@ -585,12 +610,11 @@ lhsSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca
 # Select candidate plots using the k-means centroids method
 #
 # @param r_pca PCA scores of landscape pixels in structural space.
-# @param p_new_pca Optional. PCA scores of candidate plots in structural space.
-#     If supplied, selection is restricted to these candidates; otherwise the
-#     full set of landscape pixels (`r_pca`) is used.
-# @param p_pca Optional. PCA scores of existing plots in structural space. If
-#     supplied, these plots are treated as fixed and excluded from clustering
-#     to prevent duplication.
+# @param new_ind optional, row IDs in `r_pca` specifying candidate plot
+#     locations. If not supplied, the full set of landscape pixels in `r_pca`
+#     is used.
+# @param old_ind optional, row IDs in `r_pca` specifying existing plot
+#     locations. 
 # @param n_plots Number of plots (clusters) to select.
 # @param n_pca Number of PCA axes used in the clustering space.
 #
@@ -609,7 +633,7 @@ lhsSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca
 # @import stats
 # @import FNN
 # 
-kmeansSelect <- function(r_pca, p_new_pca = NULL, p_pca = NULL, n_plots = 10, n_pca = 3) {
+kmeansSelect <- function(r_pca, new_ind = NULL, old_ind = NULL, n_plots = 10, n_pca = 3) {
   # Restrict to selected PCA axes
   r_pca <- as.matrix(r_pca[, 1:n_pca, drop = FALSE])
   
