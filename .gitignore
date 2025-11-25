@@ -2,3 +2,6 @@ dat/
 img/
 old/
 doc/
+inst/doc
+/doc/
+/Meta/

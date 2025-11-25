@@ -1,12 +1,26 @@
-# How representative of forest structure are plots in a site?
-# John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2025-11-18
+---
+title: "siteOptiSample"
+output: rmarkdown::html_vignette
+author: John L. Godlee (johngodlee@gmail.com)
+vignette: >
+  %\VignetteIndexEntry{siteOptiSample}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
-# Purpose:
-# To what extent are existing plots representative of the broader landscape forest structure? 
-# Identify optimal locations for new plots to fill gaps in multidimensional forest structure space.
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 8,   # wider images
+  fig.height = 6,  # taller images
+  fig.retina = 2   # higher resolution
+)
+```
 
-# Packages
+```{r setup}
+library(siteOptiSample)
+
 library(dplyr)
 library(tidyr)
 library(terra)
@@ -16,83 +30,68 @@ library(tidyterra)
 library(scico)
 library(GGally)
 library(patchwork)
+```
 
-source("./func.R")
+Purpose:
 
-#############
-# IMPORT DATA
-#############
+* To what extent are existing plots representative of the broader landscape forest structure? 
+* Identify optimal locations for new plots to fill gaps in multidimensional forest structure space.
 
-# Import ALS metrics
-als <- rast("./dat/als/san_lorenzo_predictors_50m.tiff")
+```{r}
 
-# Import 50x50 m plot polygons
-subplots <- st_read("./dat/plots/sub_summ.gpkg")
+# Import structural metrics raster
+data(san_lorenzo_rast)
 
-# Filter subplots to ALS data
-als_poly <- st_as_sf(as.polygons(als, na.rm = TRUE))
-subplots_als <- st_join(subplots, als_poly, join = st_intersects) %>% 
-  filter(!is.na(pulse_density)) 
+# Import polygons of existing plots
+data(san_lorenzo_plots)
 
-# Only include "bottomleft" subplots
-p <- subplots_als %>% 
-  filter(grepl("bottomleft", subplot_id))
+# Prepare data objects
+r <- unwrap(san_lorenzo_rast)
+p <- san_lorenzo_plots
+```
 
-# Select relevant metrics from ALS data
-# names(als)
-r <- als[[c(
-  "zmax.canopy.vox",
-  "zmean.canopy.vox",
-  "zcv.canopy.vox",
-  "zskew.canopy.vox",
-  "zkurt.canopy.vox",
-  "zq10.canopy.vox",
-  "zq30.canopy.vox",
-  "zq50.canopy.vox",
-  "zq70.canopy.vox",
-  "zq90.canopy.vox",
-  "lad_cv.aboveground.vox",
-  "lad_sum.aboveground.vox")]]
 
-# Check for collinearity
-als_vals <- as.data.frame(r)
+```{r}
+# Visualize correlation among structural layers
+ggcorr(as.data.frame(r), label = TRUE)
+```
 
-# Compute correlation between layers
-# Visualize correlation
-ggcorr(als_vals, label = TRUE)
-# if very collinear maybe just use biplot of metrics rather than a PCA
+The structural metrics are highly correlated.
 
-###########################################################
-# TEST INDIVIDUAL FUNCTIONS FOR REPRESENTATIVENESS ANALYSIS
-###########################################################
+# Part 1: Test individual functions
 
-# Extract metrics from raster for each existing plot
+Extract metrics from raster for each existing plot. `extractPlotMetrics()` returns a dataframe of values in the same row order as `p`. 
+
+If the structural metrics for each plot are already known, you could skip this step.
+
+```{r}
 old_ext <- extractPlotMetrics(r, p, fun = mean)
-# Returns a dataframe of values in the same row order as p
-# Optional, could also use the computed values for each subplot, 
-# rather than extracting point estimates from a grid.
+```
 
-# Put pixels and existing plots in the same PCA space
+Put pixels and existing plots in the same PCA space. `PCALandscap()` returns two objects with PCA scores, one for pixels (`r_pca`) and one for plots (`p_pca`). `r_pca` is a full PCA object, while `p_pca` is only PCA scores. The PCA is run on variables scaled to unit variance shifted to center on zero.
+
+```{r}
 old_pca <- PCALandscape(r, old_ext, center = TRUE, scale. = TRUE)
-# Returns two dataframes of PCA scores, for pixels (r_pca) and plots (p_pca)
-# r_pca is a full PCA object
-# p_pca is only PCA scores
-# PCA is run on variables scaled to unit variance shifted to center on zero
+```
 
-# Calculate distance from each pixel to nearest plot in PCA space
+Calculate distance from each pixel to nearest plot in PCA space. Two methods are available: "euclidean" and "mahalanobis". `pcaDist()` returns vector of distances for each pixel in `r_pca`.
+
+```{r}
 old_dist_euclidean <- pcaDist(old_pca$r_pca$x, old_pca$p_pca, 
   n_pca = 3, k = 1, method = "euclidean")
 
 old_dist_mahalanobis <- pcaDist(old_pca$r_pca$x, old_pca$p_pca, 
   n_pca = 3, k = 1, method = "mahalanobis")
-# Returns vector of distances for each pixel in r_pca
 
 old_dist_list <- list(
   "euclidean" = old_dist_euclidean,
   "mahalanobis" = old_dist_mahalanobis)
+```
 
-# Compare Euclidean and Mahalanobis distances
-euclid_mahal_dist_comp <- data.frame(
+Compare Euclidean and Mahalanobis distances:
+
+```{r}
+data.frame(
   euclidean = c(old_dist_euclidean), 
   mahalanobis = c(old_dist_mahalanobis)) %>% 
   ggplot(., aes(x = euclidean, y = mahalanobis)) + 
@@ -105,11 +104,10 @@ euclid_mahal_dist_comp <- data.frame(
     x = "Euclidean distance",
     y = "Mahalanobis distance") + 
   ggtitle("Distance in structural space from each pixel to nearest plot")
+```
 
-ggsave(euclid_mahal_dist_comp, width = 8, height = 5, 
-  file = "./img/euclid_mahal_dist_comp.png")
-
-euclid_mahal_dist_hist <- data.frame(
+```{r}
+data.frame(
   euclidean = c(old_dist_euclidean), 
   mahalanobis = c(old_dist_mahalanobis)) %>% 
   pivot_longer(everything()) %>% 
@@ -120,10 +118,11 @@ euclid_mahal_dist_hist <- data.frame(
     labs(
       x = "Distance",
       y = "Number of pixels")
+```
 
-ggsave(euclid_mahal_dist_hist, width = 8, height = 5, 
-  file = "./img/euclid_mahal_dist_hist.png")
+Create map of the dissimilarity of pixels from existing plots using both distance methods:
 
+```{r}
 # Prepare rasters with distances
 old_dist_r_list <- lapply(old_dist_list, function(x) { 
   out <- r[[1]]
@@ -132,46 +131,22 @@ old_dist_r_list <- lapply(old_dist_list, function(x) {
 })
 names(old_dist_r_list) <- names(old_dist_list)
 
-# Define colour and shape palettes for plot points
-size_map <- c(
-  "Existing plot" = 3, 
-  "Proposed plot" = 3, 
-  "Landscape value" = 1,
-  "meanmin" = 3, 
-  "minimax" = 3) 
-
-alpha_map <- c(
-  "Existing plot" = 0.5, 
-  "Proposed plot" = 0.5, 
-  "Landscape value" = 1,
-  "meanmin" = 0.5, 
-  "minimax" = 0.5)
-
-colour_map <- c(
-  "Existing plot" = "#E74B5E", 
-  "Proposed plot" = "#5499DE", 
-  "Existing plot" = "#6bab62", 
-  "meanmin" = "#9149a3", 
-  "minimax" = "#bf9f3c", 
-  "Landscape value" = "darkgrey")
-
-# Create map of the dissimilarity of pixels from existing plots
 vis_map_list <- lapply(names(old_dist_r_list), function(x) { 
   ggplot() +
     geom_spatraster(data = old_dist_r_list[[x]]) + 
-    scale_fill_scico(name = paste0("Relative ", x, " distance to nearest plot"), 
+    scale_fill_scico(name = paste0("Relative distance to nearest plot"), 
       palette = "bamako",
       limits = c(0, 8),
       oob = scales::squish) +
     geom_sf(data = p, 
-      colour = colour_map["Existing plot"], fill = NA) + 
+      colour = "#E74B5E", fill = NA) + 
     guides(
       fill = guide_colourbar(
         title.position = "top",
         barwidth = 20,
         barheight = 1)) + 
     theme_bw() +
-    ggtitle("Landscape representativeness") +
+    ggtitle(x) +
     labs(
       x = NULL, 
       y = NULL) + 
@@ -183,11 +158,16 @@ vis_map_list <- lapply(names(old_dist_r_list), function(x) {
 })
 names(vis_map_list) <- names(old_dist_r_list)
 
-lapply(names(vis_map_list), function(x) { 
-  ggsave(vis_map_list[[x]], width = 8, height = 6, 
-    file = paste0("./img/vis_map_out_", x, ".png"))
-})
+wrap_plots(vis_map_list) + 
+  plot_layout(
+    nrow = 1, 
+    guides = "collect") & 
+  theme(legend.position = "bottom")
+```
 
+Create a PCA biplot of landscape representativeness:
+
+```{r}
 # Extract PCA values from r_pca
 pca_pt_r <- as.data.frame(old_pca$r_pca$x)
 pca_pt_r$type <- "Landscape value" 
@@ -201,31 +181,32 @@ pca_pt_all <- rbind(pca_pt_r, pca_pt_p)
 pca_pt_all$type <- factor(pca_pt_all$type, 
   levels = c("Landscape value", "Existing plot"))
 
-# Create a PCA biplot of landscape representativeness
-vis_pca <- ggplot() +
+ggplot() +
   geom_point(data = pca_pt_all, 
     aes(x = PC1, y = PC2, 
       size = type, colour = type, alpha = type),
       shape = "circle") + 
-  scale_size_manual(name = NULL, values = size_map) + 
-  scale_colour_manual(name = NULL, values = colour_map) + 
-  scale_alpha_manual(name = NULL, values = alpha_map) + 
+  scale_colour_discrete(name = NULL) + 
+  scale_size_manual(name = NULL, 
+    values = c("Landscape value" = 1, "Existing plot" = 3)) + 
+  scale_alpha_manual(name = NULL, 
+    values = c("Landscape value" = 1, "Existing plot" = 0.5)) + 
   labs(x = "PC1", y = "PC2") + 
   theme_bw() +
   ggtitle("Structural space coverage") +
   theme(plot.title = element_text(hjust = 0.5))
+```
 
-ggsave(vis_pca, width = 6, height = 4, 
-  file = "./img/vis_pca.png")
+Classify pixels by how well-represented they are by the plots, then create a map of pixel classification. `classifLandscape()` returns a dataframe with the distances of each pixel in `r_pca` to its nearest plot in structural space, and its classification as well-represented or poorly represented by the plots, according to the confidence interval threshold provided in argument `ci`. 
 
-# Classify pixels by how well-represented they are by the plots
+```{r}
+# Run pixel classification
 old_pca_classif <- classifLandscape(
   r_pca = old_pca$r_pca$x, 
   p = old_pca$p_pca, 
   n_pca = 3, 
   ci = 0.95
 )
-# Returns dataframe with the distance of each pixel and its classification
 
 # Prepare raster with pixel classifications
 r_classif <- r[[1]]
@@ -235,8 +216,8 @@ r_classif_cls <- data.frame(
   classif = c("Poorly represented", "Well-represented by existing plots"))
 levels(r_classif) <- r_classif_cls
 
-# Create map of pixel classification 
-vis_map_classif <- ggplot() +
+# Create map of pixels and their classification
+ggplot() +
   geom_spatraster(data = r_classif) + 
   scale_fill_discrete(name = NULL, guide = guide_legend(nrow = 3),
     na.value = NA, na.translate = FALSE) +
@@ -250,28 +231,36 @@ vis_map_classif <- ggplot() +
     legend.position = "bottom",
     legend.title = element_text(size = 12),
     legend.text = element_text(size = 12))
+```
 
-ggsave(vis_map_classif, width = 8, height = 6, 
-  file = "./img/vis_map_classif.png")
+Create a PCA biplot of pixel classification:
 
-# Create PCA biplot of pixel classification 
+```{r}
 old_pca_classif_df <- as.data.frame(old_pca$r_pca$x)
 old_pca_classif_df$group <- old_pca_classif$group
 
-vis_pca_classif <- ggplot(old_pca_classif_df, aes(PC1, PC2, colour = group)) +
+ggplot(old_pca_classif_df, aes(PC1, PC2, colour = group)) +
   geom_point(alpha = 0.8) +
   scale_colour_discrete(name = NULL) +
   theme_bw() + 
   labs(x = "PC1", y = "PC2") + 
   theme(legend.position = "bottom")
+```
 
-ggsave(vis_pca_classif, width = 6, height = 4, 
-  file = "./img/vis_pca_classif.png")
+## Part 2: Optimally locate new plots
 
-##############################################
-# IDENTIFY GAPS AND OPTIMALLY LOCATE NEW PLOTS
-##############################################
+The `newPlotSelect()` function optimally locates new plots based on the relative distances of pixels from their nearest plot in structural space.
 
+Two algorithms for locating new plots are available:
+
+The `meanminSelect()` algorithm aims to minimize the mean distance of all pixels to their nearest plot in PCA space, iteratively placing new plots in pixels that most reduce the average pixel-to-nearest-plot distance. For each candidate pixel, compute how adding a plot to that pixel would decrease the mean pixel-to-nearest-plot distance, then choose the pixel that yields the largest decrease in mean distance. As a result, plots concentrate in common areas structural space.
+
+
+The `minimaxSelect()` algorithm aims to minimise the maximum distance between proposed plots and existing plots, iteratively placing new plots in pixels with structural attributes most dissimilar to existing plots. For each candidate pixel, compute the distance to the nearest existing plot, then choose the pixel with the highest distance value. As a result, plots occupy structural extremes.
+
+The code below runs `newPlotSelect()` with a few different options, then compares how they affect plot placement.
+
+```{r}
 # Test with existing plots
 test1 <- newPlotSelect(
   r = r,
@@ -282,6 +271,7 @@ test1 <- newPlotSelect(
   pca = TRUE, 
   n_pca = 3,
   method = meanminSelect)
+test1$type <- "With existing plots"
 
 # Test without existing plots
 test2 <- newPlotSelect(
@@ -293,6 +283,7 @@ test2 <- newPlotSelect(
   pca = TRUE, 
   n_pca = 3,
   method = meanminSelect)
+test2$type <- "Without existing plots"
 
 # Test without PCA 
 test3 <- newPlotSelect(
@@ -304,6 +295,7 @@ test3 <- newPlotSelect(
   pca = FALSE, 
   n_pca = NULL,
   method = meanminSelect)
+test3$type <- "Using raw raster values"
 
 # Test with PCA using all columns
 test4 <- newPlotSelect(
@@ -315,15 +307,40 @@ test4 <- newPlotSelect(
   pca = TRUE, 
   n_pca = 12,
   method = meanminSelect)
+test4$type <- "Using all PCA axes"
+
+# Combine tests
+test_1_2_3_4 <- list(
+  test1,
+  test2, 
+  test3,
+  test4)
+
+# Create a raster to use as a background
+r_bg <- r[[1]]
+r_bg[!is.na(values(r_bg))] <- 1
+r_bg <- as.factor(r_bg)
 
 # Output should be identical
-ggplot() + 
-  geom_sf(data = test3, colour = "green", linewidth = 2) + 
-  geom_sf(data = test4, colour = "red", fill = NA) 
+wrap_plots(lapply(test_1_2_3_4, function(x) {
+  ggplot() + 
+    geom_spatraster(data = r_bg, show.legend = FALSE) +
+    scale_fill_manual(values = "grey", na.value = NA, na.translate = FALSE) + 
+    geom_sf(data = x, fill = NA, colour = "red") + 
+    theme_void() + 
+    ggtitle(unique(x$type))
+}))
+```
 
+A mask layer provided by argument `r_mask` can be used to restrict the location of new plots. You could use this to filter out inaccessible locations, for example.
+
+```{r}
 # Test with mask layer
 r_mask <- r[[1]]
 r_mask[values(r_mask) < 35] <- NA_real_
+r_mask[!is.na(values(r_mask))] <- 1
+r_mask <- as.factor(r_mask)
+
 test5 <- newPlotSelect(
   r = r,
   p = NULL,
@@ -333,13 +350,19 @@ test5 <- newPlotSelect(
   pca = TRUE, 
   n_pca = 3,
   method = meanminSelect)
+test5$type <- "Using a mask layer"
 
-# test5 (red) should always overlap mask layer   
+# Should always overlap mask layer   
 ggplot() + 
-  geom_spatraster(data = r_mask) + 
-  geom_sf(data = test4, colour = "green", fill = NA) + 
-  geom_sf(data = test5, colour = "red", fill = NA) 
+  geom_spatraster(data = r_mask, show.legend = FALSE) + 
+  scale_fill_manual(values = "grey", na.value = NA, na.translate = FALSE) + 
+  geom_sf(data = test5, colour = "red", fill = NA) +
+  theme_classic()
+```
 
+Comparison of the `meanminSelect()` and `minimaxSelect()` algorithms:
+
+```{r}
 # Test with minimax algorithm
 test6 <- newPlotSelect(
   r = r,
@@ -350,13 +373,24 @@ test6 <- newPlotSelect(
   pca = TRUE, 
   n_pca = 3,
   method = minimaxSelect)
+test6$type <- "minimax"
 
-# Compare plot placement uing minimax and meanmin algorithms
-ggplot() + 
-  geom_spatraster(data = r[[1]]) + 
-  geom_sf(data = test1, colour = "green", fill = NA) + 
-  geom_sf(data = test6, colour = "red", fill = NA) 
+test_1_6 <- list(
+  test1, 
+  test6)
+test_1_6[[1]]$type <- "meanmin"
 
+wrap_plots(lapply(test_1_6, function(x) {
+  ggplot() + 
+    geom_spatraster(data = r_bg, show.legend = FALSE) +
+    scale_fill_manual(values = "grey", na.value = NA, na.translate = FALSE) + 
+    geom_sf(data = x, fill = NA, colour = "red") + 
+    theme_void() + 
+    ggtitle(unique(x$type))
+}))
+```
+
+```{r}
 # Compare PCA positions using minimax and meanmin algorithms
 
 # Extract metrics from raster for each existing plot
@@ -374,22 +408,23 @@ pca_pt_test_1_6 <- rbind(pca_pt_r, test1_pca, test6_pca, pca_pt_p)
 pca_pt_test_1_6$type <- factor(pca_pt_test_1_6$type,
   levels = c("Landscape value", "meanmin", "minimax", "Existing plot"))
 
-vis_pca_meanmin_minimax_comp <- ggplot() +
+ggplot() +
   geom_point(data = pca_pt_test_1_6, 
     aes(x = PC1, y = PC2, 
       size = type, colour = type, alpha = type),
       shape = "circle") + 
-  scale_size_manual(name = NULL, values = size_map) + 
-  scale_colour_manual(name = NULL, values = colour_map) + 
-  scale_alpha_manual(name = NULL, values = alpha_map) + 
+  scale_colour_discrete(name = NULL) + 
+  scale_size_manual(name = NULL, 
+    values = c("Existing plot" = 3, "meanmin" = 3, "minimax" = 3, "Landscape value" = 1)) + 
+  scale_alpha_manual(name = NULL, 
+    values = c("Existing plot" = 0.5, "meanmin" = 0.5, "minimax" = 0.5, "Landscape value" = 1)) + 
   labs(x = "PC1", y = "PC2") + 
   theme_bw() +
   ggtitle("Structural space coverage") +
   theme(plot.title = element_text(hjust = 0.5))
+```
 
-ggsave(vis_pca_meanmin_minimax_comp, width = 6, height = 4, 
-  file = "./img/vis_pca_meanmin_minimax_comp.png")
-
+```{r}
 # Calculate distance from each pixel to nearest plot in PCA space
 # Using meanmin and minimax algorithms
 test1_dist_euclidean <- pcaDist(old_pca$r_pca$x, 
@@ -401,7 +436,7 @@ test6_dist_euclidean <- pcaDist(old_pca$r_pca$x,
   n_pca = 3, k = 1, method = "euclidean")
  
 # Create histograms to compare resulting distances
-test1_6_dist_hist <- data.frame(
+data.frame(
   existing = c(old_dist_euclidean), 
   meanmin = c(test1_dist_euclidean),
   minimax = c(test6_dist_euclidean)) %>% 
@@ -411,13 +446,11 @@ test1_6_dist_hist <- data.frame(
     labels = c("Existing plot", "meanmin", "minimax"))) %>% 
   ggplot(., aes(x = value, fill = name)) + 
     geom_histogram(position = "identity", colour = "black") + 
-    scale_fill_manual(name = NULL, values = colour_map) + 
     facet_wrap(~name, scales = "fixed", ncol = 1) + 
     theme_classic() + 
     theme(legend.position = "none") + 
     labs(
       x = "Distance",
       y = "Number of pixels")
+```
 
-ggsave(test1_6_dist_hist, width = 6, height = 5, 
-  file = "./img/test1_6_dist_hist.png")
