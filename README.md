@@ -12,7 +12,7 @@ You can install the development version of `siteOptiSample` from GitHub with:
 
 ```r
 # install.packages("remotes")
-remotes::install_github("GEO-TREES/siteOptiSample")
+remotes::install_github("johngodlee/siteOptiSample")
 ```
 
 ## Dependencies
