@@ -2,6 +2,9 @@
 #' 
 #' @param x PCA scores 
 #' @param y PCA scores
+#' @param w optional, numeric vector of weights (one per column). Larger values
+#'     increase a variable’s contribution; if NULL, all variables are equally
+#'     weighted.
 #' @param n_pca number of PCA axes used in analysis
 #' @param k number of nearest neighbours in y to return for each row in x
 #' @param method distance method, either "euclidean" or "mahalanobis"
@@ -12,13 +15,13 @@
 #'
 #' @export
 #' 
-pcaDist <- function(x, y, n_pca = 3, k = 1, method = "euclidean") {
+pcaDist <- function(x, y, w = NULL, n_pca = 3, k = 1, method = "euclidean") {
   # Calculate nearest neighbor distances
   # For each landscape pixel, find distance to nearest plot
   if (method == "mahalanobis") {
-    dists_mat <- mahanalobisDist(x[,1:n_pca], y[,1:n_pca])
+    dists_mat <- mahalanobisDist(x[,1:n_pca], y[,1:n_pca], w)
   } else if (method == "euclidean") {
-    dists_mat <- euclideanDist(x[,1:n_pca], y[,1:n_pca])
+    dists_mat <- euclideanDist(x[,1:n_pca], y[,1:n_pca], w)
   } else {
     stop("method must be either 'euclidean' or 'mahalanobis'")
   }

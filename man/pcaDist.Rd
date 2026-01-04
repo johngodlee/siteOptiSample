@@ -4,12 +4,16 @@
 \alias{pcaDist}
 \title{Get nearest neighbour distances between two PCAs}
 \usage{
-pcaDist(x, y, n_pca = 3, k = 1, method = "euclidean")
+pcaDist(x, y, w = NULL, n_pca = 3, k = 1, method = "euclidean")
 }
 \arguments{
 \item{x}{PCA scores}
 
 \item{y}{PCA scores}
+
+\item{w}{optional, numeric vector of weights (one per column). Larger values
+increase a variable’s contribution; if NULL, all variables are equally
+weighted.}
 
 \item{n_pca}{number of PCA axes used in analysis}
 
